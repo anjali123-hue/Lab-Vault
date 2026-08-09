@@ -1,0 +1,1 @@
+- [Inventory source of truth](uploaded-inventory.md) — LabVault inventory must stay grounded in the two uploaded workbooks; never invent stock or quantities.

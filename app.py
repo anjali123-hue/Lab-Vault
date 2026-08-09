@@ -203,6 +203,17 @@ def init_db():
                 VALUES ('admin', 'Lab Assistant', ?, ?, ?)""",
                 (MAIL_SENDER, generate_password_hash(ADMIN_PASSWORD), utcnow().isoformat()),
             )
+        elif ADMIN_PASSWORD and ADMIN_PASSWORD != "change-this-admin-password":
+            existing_admin = query("SELECT id, password_hash FROM users WHERE role='admin' LIMIT 1", one=True)
+            if existing_admin and check_password_hash(existing_admin["password_hash"], "change-this-admin-password"):
+                execute(
+                    "UPDATE users SET password_hash=?, updated_at=? WHERE id=?"
+                    if "updated_at" in {row["name"] for row in db().execute("PRAGMA table_info(users)").fetchall()}
+                    else "UPDATE users SET password_hash=? WHERE id=?",
+                    (generate_password_hash(ADMIN_PASSWORD), utcnow().isoformat(), existing_admin["id"])
+                    if "updated_at" in {row["name"] for row in db().execute("PRAGMA table_info(users)").fetchall()}
+                    else (generate_password_hash(ADMIN_PASSWORD), existing_admin["id"]),
+                )
         import_inventory()
 
 
