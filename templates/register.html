@@ -1,5 +1,261 @@
 {% extends "base.html" %}
+
 {% block title %}Create student account{% endblock %}
+
 {% block content %}
-<div class="auth-shell"><a href="/" class="brand auth-brand"><span class="brand-mark">⌁</span><span>Lab<span>Vault</span></span><small>AI</small></a><div class="auth-card wide"><div class="eyebrow">STUDENT ACCESS</div><h1>Make the lab work for you.</h1><p>Create your student account to browse components and send requests.</p><form method="post" class="form-grid"><input type="hidden" name="csrf" value="{{ csrf_token }}"><label class="span-2">Full name<input required name="full_name" placeholder="Your full name"></label><label>Phone number<input name="phone" placeholder="+91 00000 00000"></label><label>Email address<input required type="email" name="email" placeholder="you@college.edu"></label><label>Student UID<input required name="uid" placeholder="23-IOT38-27"></label><label>Branch / department<select required name="branch"><option value="">Select branch</option>{% for b in ['AIDS','AIML','IOT','EXTC','ENCS','COMPS','IT','CSE','CIVIL','MECH','MME'] %}<option>{{ b }}</option>{% endfor %}</select></label><label>Division<select name="division"><option>NA</option><option>A</option><option>B</option><option>C</option><option>D</option></select></label><label>Year<select name="year"><option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>4th Year</option></select></label><label>Password<input required type="password" name="password" placeholder="8+ characters"></label><div class="span-2"><button class="button full" type="submit">Create student account <span>→</span></button></div></form><div class="auth-switch">Already have an account? <a href="{{ url_for('login', role='student') }}">Sign in</a></div></div><p class="auth-foot">LabVault · A thoughtful layer over your lab inventory</p></div>
+
+<div class="auth-shell">
+
+<a href="/" class="brand auth-brand">
+    <span class="brand-mark">⌁</span>
+    <span>Lab<span>Vault</span></span>
+    <small>AI</small>
+</a>
+
+<div class="auth-card wide">
+
+    <div class="eyebrow">
+        STUDENT ACCESS
+    </div>
+
+    <h1>
+        Make the lab work for you.
+    </h1>
+
+    <p>
+        Create your student account to browse components and send requests.
+    </p>
+
+    <form method="post" class="form-grid">
+
+        <input
+            type="hidden"
+            name="csrf"
+            value="{{ csrf_token }}"
+        >
+
+        <label class="span-2">
+            Full name
+
+            <input
+                required
+                name="full_name"
+                placeholder="Your full name"
+                value="{{ request.form.get('full_name', '') }}"
+                autocomplete="name"
+            >
+        </label>
+
+        <label>
+            ERP ID
+
+            <input
+                required
+                name="erp_id"
+                maxlength="11"
+                pattern="S[0-9]{10}"
+                placeholder="SXXXXXXXXXX"
+                value="{{ request.form.get('erp_id', '') }}"
+                autocomplete="username"
+            >
+        </label>
+
+        <label>
+            Student UID
+
+            <input
+                required
+                name="uid"
+                placeholder="23-IOT38-27"
+                value="{{ request.form.get('uid', '') }}"
+            >
+        </label>
+
+        <label>
+            Phone number
+
+            <div style="display:flex; gap:8px; align-items:stretch;">
+                <span
+                    style="
+                        display:flex;
+                        align-items:center;
+                        padding:10px 12px;
+                        background:var(--surface-2);
+                        border:1px solid var(--line);
+                        border-radius:9px;
+                        color:var(--text);
+                        font-size:.78rem;
+                        font-weight:700;
+                    "
+                >
+                    +91
+                </span>
+
+                <input
+                    required
+                    name="phone"
+                    type="tel"
+                    inputmode="numeric"
+                    maxlength="10"
+                    minlength="10"
+                    pattern="[6-9][0-9]{9}"
+                    placeholder="9876543210"
+                    value="{{ request.form.get('phone', '') }}"
+                    autocomplete="tel"
+                    title="Enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9."
+                >
+            </div>
+
+            <small>
+                Enter your 10-digit mobile number without +91.
+            </small>
+            </label>
+
+        <label>
+            Email address
+
+            <input
+                required
+                type="email"
+                name="email"
+                placeholder="you@college.edu"
+                value="{{ request.form.get('email', '') }}"
+                autocomplete="email"
+            >
+        </label>
+
+        <label>
+            Branch / department
+
+            <select required name="branch">
+
+                <option value="">
+                    Select branch
+                </option>
+
+                {% for b in ['AIDS','AIML','IOT','EXTC','ENCS','COMPS','IT','CSE','CIVIL','MECH','MME'] %}
+
+                <option
+                    value="{{ b }}"
+                    {% if request.form.get('branch') == b %}selected{% endif %}
+                >
+                    {{ b }}
+                </option>
+
+                {% endfor %}
+
+            </select>
+        </label>
+
+        <label>
+            Division
+
+            <select name="division">
+
+                {% for d in ['NA','A','B','C','D'] %}
+
+                <option
+                    value="{{ d }}"
+                    {% if request.form.get('division', 'NA') == d %}selected{% endif %}
+                >
+                    {{ d }}
+                </option>
+
+                {% endfor %}
+
+            </select>
+        </label>
+
+        <label>
+            Year
+
+            <select name="year">
+
+                {% for y in ['1st Year','2nd Year','3rd Year','4th Year'] %}
+
+                <option
+                    value="{{ y }}"
+                    {% if request.form.get('year', '1st Year') == y %}selected{% endif %}
+                >
+                    {{ y }}
+                </option>
+
+                {% endfor %}
+
+            </select>
+        </label>
+
+        <label>
+            Password
+
+            <div class="password-field">
+
+                <input
+                    required
+                    type="password"
+                    name="password"
+                    placeholder="8+ characters"
+                    autocomplete="new-password"
+                >
+
+                <button
+                    type="button"
+                    data-password-toggle
+                >
+                    Show
+                </button>
+
+            </div>
+        </label>
+
+        <label>
+            Confirm password
+
+            <div class="password-field">
+
+                <input
+                    required
+                    type="password"
+                    name="confirm_password"
+                    placeholder="Re-enter password"
+                    autocomplete="new-password"
+                >
+
+                <button
+                    type="button"
+                    data-password-toggle
+                >
+                    Show
+                </button>
+
+            </div>
+        </label>
+
+        <div class="span-2">
+            <button
+                class="button full"
+                type="submit"
+            >
+                Create student account
+                <span>→</span>
+            </button>
+        </div>
+
+    </form>
+
+    <div class="auth-switch">
+        Already have an account?
+        <a href="{{ url_for('login', role='student') }}">
+            Sign in
+        </a>
+    </div>
+
+</div>
+
+<p class="auth-foot">
+    LabVault · A thoughtful layer over your lab inventory
+</p>
+
+</div>
+
 {% endblock %}

@@ -10,43 +10,452 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
+
 <body>
-  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
   {% if current_user %}
+
   <aside class="sidebar">
-    <a class="brand" href="{{ url_for('dashboard') }}"><span class="brand-mark">⌁</span><span>Lab<span>Vault</span></span><small>AI</small></a>
-    <div class="profile-mini"><div class="avatar">{{ current_user['full_name'][0] }}</div><div><strong>{{ current_user['full_name'] }}</strong><span>{{ 'Lab Assistant' if current_user['role']=='admin' else current_user['branch'] or 'Engineering Student' }}</span></div></div>
-    <nav class="nav">
-      <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint in ['student_dashboard','admin_dashboard'] else '' }}"><b>⌂</b> Overview</a>
-      {% if current_user['role'] == 'student' %}
-      <a href="{{ url_for('student_dashboard') }}#inventory"><b>⌕</b> Find components</a>
-      <a href="{{ url_for('student_dashboard') }}#requests"><b>◷</b> My requests</a>
-      <a href="{{ url_for('student_dashboard') }}#issued"><b>◈</b> Issued to me</a>
-      <a href="{{ url_for('student_dashboard') }}#assistant"><b>✦</b> Project assistant</a>
-      {% else %}
-      <a href="{{ url_for('admin_dashboard') }}#inventory"><b>▦</b> Inventory</a>
-      <a href="{{ url_for('admin_dashboard') }}#requests"><b>✓</b> Requests</a>
-      <a href="{{ url_for('returns') }}"><b>↩</b> Returns</a>
-      {% endif %}
-    </nav>
-    <div class="nav-bottom">
-      <button class="nav-link" data-theme-toggle><b>◐</b> <span>Dark mode</span></button>
-      <a href="{{ url_for('logout') }}"><b>↪</b> Sign out</a>
+
+    <a
+      class="brand"
+      href="{{ url_for('dashboard') }}"
+    >
+      <span class="brand-mark">⌁</span>
+      <span>Lab<span>Vault</span></span>
+      <small>AI</small>
+    </a>
+
+
+    <div class="profile-mini">
+
+      <div class="avatar">
+        {{ current_user['full_name'][0] }}
+      </div>
+
+      <div>
+
+        <strong>
+          {{ current_user['full_name'] }}
+        </strong>
+
+        <span>
+          {{
+            'HOD'
+            if current_user['is_hod']
+            else 'Lab Assistant'
+            if current_user['role'] == 'admin'
+            else current_user['branch'] or 'Engineering Student'
+          }}
+        </span>
+
+      </div>
+
     </div>
+
+
+    <nav class="nav">
+
+      {% if current_user['is_hod'] %}
+
+        <a
+          href="{{ url_for('hod_dashboard') }}"
+          class="{{ 'active' if request.endpoint == 'hod_dashboard' else '' }}"
+        >
+          <b>⌂</b>
+          Overview
+        </a>
+
+        <a href="{{ url_for('hod_dashboard') }}#approvals">
+          <b>✓</b>
+          HOD approvals
+        </a>
+
+        <a href="{{ url_for('hod_dashboard') }}#external-mentors">
+          <b>!</b>
+          External mentors
+        </a>
+
+        <a href="{{ url_for('hod_dashboard') }}#faculty">
+          <b>♙</b>
+          Faculty
+        </a>
+
+        <a href="{{ url_for('hod_change_password') }}">
+          <b>◉</b>
+          Security
+        </a>
+
+
+      {% elif current_user['role'] == 'student' %}
+
+        <a
+          href="{{ url_for('student_dashboard') }}"
+          class="{{ 'active' if request.endpoint == 'student_dashboard' else '' }}"
+        >
+          <b>⌂</b>
+          Overview
+        </a>
+
+        <a href="{{ url_for('student_dashboard') }}#inventory">
+          <b>⌕</b>
+          Find components
+        </a>
+
+        <a href="{{ url_for('student_dashboard') }}#requests">
+          <b>◷</b>
+          My requests
+        </a>
+
+        <a href="{{ url_for('student_dashboard') }}#issued">
+          <b>◈</b>
+          Issued to me
+        </a>
+
+        <a href="{{ url_for('student_dashboard') }}#assistant">
+          <b>✦</b>
+          Project assistant
+        </a>
+
+
+      {% else %}
+
+        <a
+          href="{{ url_for('admin_dashboard') }}"
+          class="{{ 'active' if request.endpoint == 'admin_dashboard' else '' }}"
+        >
+          <b>⌂</b>
+          Overview
+        </a>
+
+        <a href="{{ url_for('admin_dashboard') }}#inventory">
+          <b>▦</b>
+          Inventory
+        </a>
+
+        <a href="{{ url_for('admin_dashboard') }}#requests">
+          <b>✓</b>
+          Requests
+        </a>
+
+        <a href="{{ url_for('returns') }}">
+          <b>↩</b>
+          Returns
+        </a>
+
+      {% endif %}
+
+    </nav>
+
+
+    <div class="nav-bottom">
+
+      <button
+        class="nav-link"
+        data-theme-toggle
+      >
+        <b>◐</b>
+        <span>Dark mode</span>
+      </button>
+
+      <a href="{{ url_for('logout') }}">
+        <b>↪</b>
+        Sign out
+      </a>
+
+    </div>
+
   </aside>
+
   {% endif %}
+
+
   <main class="{{ 'with-sidebar' if current_user else '' }}">
-    {% if current_user %}
-    <header class="topbar">
-      <div class="mobile-brand"><span class="brand-mark">⌁</span>Lab<span>Vault</span></div>
-      <div class="topbar-right"><div class="notification"><span>♧</span>{% if unread_count %}<i>{{ unread_count }}</i>{% endif %}<div class="notification-pop"><strong>Notifications</strong><p>{{ unread_count }} unread updates</p><form method="post" action="{{ url_for('read_notifications') }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button>Mark all as read</button></form></div></div><div class="avatar">{{ current_user['full_name'][0] }}</div></div>
-    </header>
-    {% endif %}
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}<div class="flash-stack">{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}<button onclick="this.parentElement.remove()">×</button></div>{% endfor %}</div>{% endif %}
-    {% endwith %}
-    {% block content %}{% endblock %}
+
+    <div class="page-body">
+
+      {% if current_user %}
+
+      <header class="topbar">
+
+        <div class="mobile-brand">
+          <span class="brand-mark">⌁</span>
+          Lab<span>Vault</span>
+        </div>
+
+        <div class="topbar-right">
+
+          <a
+            href="{{ url_for('notifications_page') }}"
+            class="notification"
+            style="text-decoration:none"
+          >
+
+            <span>♧</span>
+
+            {% if unread_count %}
+              <i>{{ unread_count }}</i>
+            {% endif %}
+
+          </a>
+
+          <div class="avatar">
+            {{ current_user['full_name'][0] }}
+          </div>
+
+        </div>
+
+      </header>
+
+      {% endif %}
+
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+
+        {% if messages %}
+
+          <div class="flash-stack">
+
+            {% for category, message in messages %}
+
+              <div class="flash {{ category }}">
+
+                {{ message }}
+
+                <button
+                  onclick="this.parentElement.remove()"
+                >
+                  ×
+                </button>
+
+              </div>
+
+            {% endfor %}
+
+          </div>
+
+        {% endif %}
+
+      {% endwith %}
+
+
+      {% block content %}{% endblock %}
+
+    </div>
+
+
+    <footer class="site-footer">
+
+        <!-- keep the exact same footer content as before -->
+
+        <div class="footer-top">
+
+            <div class="footer-brand">
+
+                <div class="footer-logo-row">
+
+                    <span class="footer-logo-mark">
+                      ◈
+                    </span>
+
+                    <div>
+
+                        <strong>
+                          LabVault
+                        </strong>
+
+                        <small>
+                          Smart Laboratory Management
+                        </small>
+
+                    </div>
+
+                </div>
+
+                <p>
+                  A smarter way to manage laboratory inventory,
+                  requests, components, and usage.
+                </p>
+
+                <span class="footer-status">
+                  <i></i>
+                  System operational
+                </span>
+
+            </div>
+
+
+            <div class="footer-col">
+
+                <div class="footer-col-title">
+                  Platform
+                </div>
+
+                <a href="{{ url_for('dashboard') }}">
+                  Dashboard
+                </a>
+
+                {% if current_user and current_user['is_hod'] %}
+
+                <a href="{{ url_for('hod_dashboard') }}#faculty">
+                  Faculty
+                </a>
+
+                <a href="{{ url_for('hod_dashboard') }}#approvals">
+                  HOD approvals
+                </a>
+
+                {% elif current_user and current_user['role'] == 'admin' %}
+
+                <a href="{{ url_for('admin_dashboard') }}#inventory">
+                  Inventory
+                </a>
+
+                <a href="{{ url_for('admin_dashboard') }}#requests">
+                  Requests
+                </a>
+
+                {% else %}
+
+                <a href="{{ url_for('student_dashboard') if current_user else url_for('login') }}#inventory">
+                  Inventory
+                </a>
+
+                <a href="{{ url_for('student_dashboard') if current_user else url_for('login') }}#requests">
+                  Requests
+                </a>
+
+                {% endif %}
+
+
+                {% if current_user and current_user['role'] == 'admin' and not current_user['is_hod'] %}
+
+                <a href="{{ url_for('returns') }}">
+                  Returns
+                </a>
+
+                {% elif not current_user %}
+
+                <a href="{{ url_for('login') }}">
+                  Returns
+                </a>
+
+                {% endif %}
+
+            </div>
+
+
+            <div class="footer-col">
+
+                <div class="footer-col-title">
+                  Features
+                </div>
+
+                <a href="#">
+                  Smart inventory tracking
+                </a>
+
+                <a href="#">
+                  Request management
+                </a>
+
+                <a
+                  href="{{
+                    url_for('hod_dashboard')
+                    if current_user and current_user['is_hod']
+                    else url_for('admin_dashboard')
+                    if current_user and current_user['role']=='admin'
+                    else '#'
+                  }}#historical-analytics"
+                >
+                  Usage analytics
+                </a>
+
+                <a href="#">
+                  Automated alerts
+                </a>
+
+            </div>
+
+
+            <div class="footer-credit">
+
+                <small>
+                  Crafted with
+                </small>
+
+                <strong>
+                  ♥ by <span>SAS</span>
+                </strong>
+
+                <small class="footer-tagline">
+                  Built for smarter labs.
+                </small>
+
+            </div>
+
+        </div>
+
+
+        <div class="footer-bottom">
+
+            <span>
+              © 2026 <strong>LabVault</strong> · All rights reserved
+            </span>
+
+            <div class="footer-bottom-tags">
+
+                <span>
+                  ✓ Secure
+                </span>
+
+                <span>
+                  ✦ Smart
+                </span>
+
+                <span>
+                  ↗ Connected
+                </span>
+
+            </div>
+
+        </div>
+
+    </footer>
+
+
   </main>
+
+
+  <div class="mini-footer-bar">
+
+    <span>
+      © 2026 <strong>LabVault</strong> · All rights reserved
+    </span>
+
+    <div class="mini-footer-tags">
+
+      <span>
+        ✓ Secure
+      </span>
+
+      <span>
+        ✦ Smart
+      </span>
+
+      <span>
+        ↗ Connected
+      </span>
+
+    </div>
+
+  </div>
+
+
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+
 </body>
 </html>

@@ -1,5 +1,472 @@
 {% extends "base.html" %}
+
 {% block title %}New component request{% endblock %}
+
 {% block content %}
-<div class="page-wrap narrow-page"><a class="back-link" href="{{ url_for('student_dashboard') }}">← Back to inventory</a><section class="page-heading"><div><div class="eyebrow">NEW REQUEST</div><h1>Tell the lab about your build.</h1><p>Your request will move through mentor and HOD review.</p></div></section><div class="request-layout"><form method="post" class="panel request-form"><input type="hidden" name="csrf" value="{{ csrf_token }}"><div class="form-section"><div class="section-number">01</div><div><h2>Project context</h2><p>Give reviewers enough context to approve the right components.</p></div></div><label>Project title<input required name="project_title" placeholder="e.g. Smart agriculture monitoring system"></label><label>Purpose / why you need these components<textarea required name="purpose" rows="4" placeholder="Describe what you are building and how the components will be used."></textarea></label><div class="form-section"><div class="section-number">02</div><div><h2>Review contacts</h2><p>We’ll send secure review links to these addresses.</p></div></div><div class="form-grid"><label>Mentor name<input required name="mentor_name" placeholder="Dr. Mentor Name"></label><label>Mentor email<input required type="email" name="mentor_email" placeholder="mentor@college.edu"></label><label>Mentor phone<input name="mentor_phone" placeholder="Optional"></label><label>HOD name<input required name="hod_name" placeholder="Dr. HOD Name"></label><label>HOD email<input required type="email" name="hod_email" placeholder="hod@college.edu"></label><label>HOD phone<input name="hod_phone" placeholder="Optional"></label></div><div class="form-section"><div class="section-number">03</div><div><h2>Return timeline</h2><p>Requests can be held for up to seven days.</p></div></div><label>Return period<select name="days">{% for day in range(1,8) %}<option value="{{ day }}" {% if day==3 %}selected{% endif %}>{{ day }} day{{ 's' if day != 1 }}</option>{% endfor %}</select></label><label class="check-row"><input type="checkbox" name="responsibility"><span>I accept responsibility for returning all issued laboratory components in good working condition, according to the department’s laboratory rules.</span></label><button class="button full" type="submit">Submit for review <span>→</span></button></form><aside class="panel summary-panel"><div class="eyebrow">REQUEST LIST</div><h2>{{ items|length }} component{{ 's' if items|length != 1 }}</h2>{% for item in items %}<div class="summary-item"><span>{{ item['name'][0] }}</span><div><strong>{{ item['name'] }}</strong><small>Quantity {{ cart.get(item['id']|string, 1) }} · {{ item['available_qty'] }} available</small></div></div>{% endfor %}<div class="summary-note"><span>⌁</span><p>Each request gets a unique ID and a secure approval trail. Email links open a review page — they never approve automatically.</p></div></aside></div></div>
+
+<div class="page-wrap narrow-page">
+
+<a
+    class="back-link"
+    href="{{ url_for('student_dashboard') }}"
+>
+    ← Back to inventory
+</a>
+
+
+<section class="page-heading">
+
+    <div>
+
+        <div class="eyebrow">
+            NEW REQUEST
+        </div>
+
+        <h1>
+            Tell the lab about your build.
+        </h1>
+
+        <p>
+            Your request will move through mentor and HOD review.
+        </p>
+
+    </div>
+
+</section>
+
+
+<div class="request-layout">
+
+
+<form
+    method="post"
+    class="panel request-form"
+>
+
+    <input
+        type="hidden"
+        name="csrf"
+        value="{{ csrf_token }}"
+    >
+
+
+    <div class="form-section">
+
+        <div class="section-number">
+            01
+        </div>
+
+        <div>
+
+            <h2>
+                Project context
+            </h2>
+
+            <p>
+                Give reviewers enough context to approve the right components.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <label>
+
+        Project title
+
+        <input
+            required
+            name="project_title"
+            placeholder="e.g. Smart agriculture monitoring system"
+        >
+
+    </label>
+
+
+    <label>
+
+        Purpose / why you need these components
+
+        <textarea
+            required
+            name="purpose"
+            rows="4"
+            placeholder="Describe what you are building and how the components will be used."
+        ></textarea>
+
+    </label>
+
+
+    <div class="form-section">
+
+        <div class="section-number">
+            02
+        </div>
+
+        <div>
+
+            <h2>
+                Review contacts
+            </h2>
+
+            <p>
+                Select an IoT faculty mentor or submit an external mentor for HOD verification.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <label>
+
+        Mentor
+
+        <select
+            id="mentor-choice"
+            name="mentor_choice"
+            required
+        >
+
+            <option value="">
+                Select IoT faculty mentor
+            </option>
+
+            {% for member in faculty %}
+
+            <option value="{{ member['id'] }}">
+
+                {{ member['full_name'] }}
+
+                ·
+
+                {{ member['designation'] }}
+
+            </option>
+
+            {% endfor %}
+
+            <option value="other">
+                Other / External Mentor
+            </option>
+
+        </select>
+
+    </label>
+
+
+    <div
+        id="external-mentor-fields"
+        style="display:none;"
+    >
+
+        <div class="eyebrow">
+            EXTERNAL MENTOR
+        </div>
+
+        <p
+            class="panel-subtitle"
+            style="margin-bottom:15px;"
+        >
+            This mentor is not in the IoT faculty list.
+            The HOD will verify the details before final approval.
+        </p>
+
+
+        <div class="form-grid">
+
+            <label>
+
+                Mentor name
+
+                <input
+                    name="mentor_name"
+                    id="mentor-name"
+                    placeholder="External mentor name"
+                >
+
+            </label>
+
+
+            <label>
+
+                Mentor email
+
+                <input
+                    type="email"
+                    name="mentor_email"
+                    id="mentor-email"
+                    placeholder="mentor@example.com"
+                >
+
+            </label>
+
+
+            <label>
+
+                Mentor phone
+
+                <input
+                    name="mentor_phone"
+                    id="mentor-phone"
+                    placeholder="External mentor phone number"
+                >
+
+            </label>
+
+        </div>
+
+    </div>
+
+
+    <label>
+
+        HOD name
+
+        <input
+            required
+            name="hod_name"
+            value="{{ hod_name or '' }}"
+            placeholder="HOD name"
+            readonly
+        >
+
+    </label>
+
+
+    <label>
+
+        HOD email
+
+        <input
+            required
+            type="email"
+            name="hod_email"
+            value="{{ hod_email or '' }}"
+            placeholder="HOD email"
+            readonly
+        >
+
+    </label>
+
+
+    <div class="form-section">
+
+        <div class="section-number">
+            03
+        </div>
+
+        <div>
+
+            <h2>
+                Return timeline
+            </h2>
+
+            <p>
+                Requests can be held for up to seven days.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <label>
+
+        Return period
+
+        <select name="days">
+
+            {% for day in range(1,8) %}
+
+            <option
+                value="{{ day }}"
+                {% if day == 3 %}selected{% endif %}
+            >
+
+                {{ day }} day{{ 's' if day != 1 }}
+
+            </option>
+
+            {% endfor %}
+
+        </select>
+
+    </label>
+
+
+    <label class="check-row">
+
+        <input
+            type="checkbox"
+            name="responsibility"
+        >
+
+        <span>
+            I accept responsibility for returning all issued laboratory
+            components in good working condition, according to the
+            department’s laboratory rules.
+        </span>
+
+    </label>
+
+
+    <button
+        class="button full"
+        type="submit"
+    >
+
+        Submit for review
+
+        <span>
+            →
+        </span>
+
+    </button>
+
+</form>
+
+
+<aside class="panel summary-panel">
+
+    <div class="eyebrow">
+        REQUEST LIST
+    </div>
+
+    <h2>
+        {{ items|length }}
+        component{{ 's' if items|length != 1 }}
+    </h2>
+
+
+    {% for item in items %}
+
+    <div class="summary-item">
+
+        <span>
+            {{ item['name'][0] }}
+        </span>
+
+        <div>
+
+            <strong>
+                {{ item['name'] }}
+            </strong>
+
+            <small>
+                Quantity {{ cart.get(item['id']|string, 1) }}
+                ·
+                {{ item['available_qty'] }}
+                available
+            </small>
+
+        </div>
+
+    </div>
+
+    {% endfor %}
+
+
+    <div class="summary-note">
+
+        <span>
+            ⌁
+        </span>
+
+        <p>
+            Each request gets a unique ID and a secure approval trail.
+            External mentors must be verified by the HOD before final approval.
+        </p>
+
+    </div>
+
+</aside>
+
+
+</div>
+
+</div>
+
+
+<script>
+
+document.addEventListener(
+    "DOMContentLoaded",
+    function () {
+
+        const mentorChoice =
+            document.getElementById(
+                "mentor-choice"
+            );
+
+        const externalFields =
+            document.getElementById(
+                "external-mentor-fields"
+            );
+
+        const mentorName =
+            document.getElementById(
+                "mentor-name"
+            );
+
+        const mentorEmail =
+            document.getElementById(
+                "mentor-email"
+            );
+
+        const mentorPhone =
+            document.getElementById(
+                "mentor-phone"
+            );
+
+
+        function updateMentorFields() {
+
+            const isExternal =
+                mentorChoice.value === "other";
+
+
+            externalFields.style.display =
+                isExternal
+                    ? "block"
+                    : "none";
+
+
+            mentorName.required =
+                isExternal;
+
+
+            mentorEmail.required =
+                isExternal;
+
+
+            mentorPhone.required =
+                isExternal;
+
+
+            if (!isExternal) {
+
+                mentorName.value = "";
+                mentorEmail.value = "";
+                mentorPhone.value = "";
+
+            }
+
+        }
+
+
+        mentorChoice.addEventListener(
+            "change",
+            updateMentorFields
+        );
+
+
+        updateMentorFields();
+
+    }
+);
+
+</script>
+
 {% endblock %}

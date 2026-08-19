@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+
+    <title>LabVault Inventory Report</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+            color: #18243a;
+            background: white;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 24px;
+        }
+
+        .brand {
+            font-size: 28px;
+            font-weight: 800;
+        }
+
+        .brand span {
+            color: #8c6cff;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .meta {
+            text-align: right;
+            font-size: 12px;
+            color: #666;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th,
+        td {
+            border: 1px solid #cfd5df;
+            padding: 8px 10px;
+            text-align: left;
+            font-size: 12px;
+        }
+
+        th {
+            background: #f1f3f7;
+            font-weight: 700;
+        }
+
+        .section {
+            margin-top: 28px;
+            margin-bottom: 8px;
+            font-size: 18px;
+            font-weight: 800;
+        }
+
+        .summary {
+            display: flex;
+            gap: 30px;
+            margin-top: 15px;
+            margin-bottom: 18px;
+            font-size: 13px;
+        }
+
+        .print-button {
+            padding: 9px 14px;
+            border: none;
+            border-radius: 8px;
+            background: #17213a;
+            color: white;
+            cursor: pointer;
+        }
+
+        @media print {
+            body {
+                margin: 10mm;
+            }
+
+            .no-print {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="no-print" style="text-align:right;margin-bottom:15px;">
+    <button class="print-button" onclick="window.print()">
+        Print Report
+    </button>
+</div>
+
+<div class="header">
+
+    <div>
+        <div class="brand">
+            Lab<span>Vault</span>
+        </div>
+
+        <div class="subtitle">
+            Laboratory Inventory Report
+        </div>
+    </div>
+
+    <div class="meta">
+        Generated: {{ generated_at }} IST
+    </div>
+
+</div>
+
+<div class="summary">
+
+    <strong>
+        Total records: {{ items|length }}
+    </strong>
+
+    <strong>
+        Total units:
+        {{ items|sum(attribute='total_qty') }}
+    </strong>
+
+    <strong>
+        Available units:
+        {{ items|sum(attribute='available_qty') }}
+    </strong>
+
+</div>
+
+
+<div class="section">
+    Complete Inventory
+</div>
+
+<table>
+
+    <thead>
+        <tr>
+            <th>Sr No</th>
+            <th>Source</th>
+            <th>Stock Register No</th>
+            <th>Name of the Article</th>
+            <th>Category</th>
+            <th>Location</th>
+            <th>Total Qty</th>
+            <th>Available Qty</th>
+            <th>Minimum Stock</th>
+            <th>Condition</th>
+            <th>Maintenance Status</th>
+            <th>Active</th>
+        </tr>
+    </thead>
+
+    <tbody>
+
+        {% for item in items %}
+
+        <tr>
+
+            <td>{{ loop.index }}</td>
+
+            <td>{{ item['source_file'] }}</td>
+
+            <td>{{ item['stock_number'] or '' }}</td>
+
+            <td>{{ item['name'] }}</td>
+
+            <td>{{ item['category'] }}</td>
+
+            <td>{{ item['location'] or '' }}</td>
+
+            <td>{{ item['total_qty'] }}</td>
+
+            <td>{{ item['available_qty'] }}</td>
+
+            <td>{{ item['minimum_stock'] }}</td>
+
+            <td>{{ item['condition'] }}</td>
+
+            <td>{{ item['maintenance_status'] }}</td>
+
+            <td>
+                {{ 'Yes' if item['active'] else 'No' }}
+            </td>
+
+        </tr>
+
+        {% endfor %}
+
+    </tbody>
+
+</table>
+
+</body>
+</html>

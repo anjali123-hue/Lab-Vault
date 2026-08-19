@@ -1,5 +1,387 @@
 {% extends "base.html" %}
-{% block title %}Project assistant{% endblock %}
+
+{% block title %}LabVault AI Assistant{% endblock %}
+
 {% block content %}
-<div class="page-wrap narrow-page"><a class="back-link" href="{{ url_for('student_dashboard') }}">← Back to overview</a><section class="ai-result-hero"><span class="ai-spark">✦</span><div><div class="eyebrow">LABVAULT AI PROJECT ASSISTANT</div><h1>For “{{ title }}”</h1><p>Here are the closest matches from your actual lab inventory. Recommendations never reserve or issue anything automatically.</p></div></section><section class="panel"><div class="panel-head"><div><div class="eyebrow">MATCHED INVENTORY</div><h2>Start with these components</h2></div></div><div class="recommend-grid">{% for item in recommendations %}<div class="recommend-card"><div class="item-mark purple">{{ item['name'][0] }}</div><div><strong>{{ item['name'] }}</strong><span>{{ item['category'] }}</span><small>{{ item['available_qty'] }} available · {{ item['location'] }}</small></div><span class="status-pill {{ 'approved' if item['available_qty'] else 'rejected' }}">{{ 'Available' if item['available_qty'] else 'Out of stock' }}</span></div>{% else %}<div class="empty-state"><span>✦</span><h3>No direct matches yet.</h3><p>Try adding a specific component or technology to your project description.</p></div>{% endfor %}</div></section></div>
+
+<div class="page-wrap">
+
+    <section class="page-heading">
+
+        <div>
+
+            <div class="eyebrow">
+                LABVAULT AI
+            </div>
+
+            <h1>
+                Project Component Assistant
+            </h1>
+
+            <p>
+                Describe your project and LabVault will analyze the
+                project requirements against your actual laboratory
+                inventory.
+            </p>
+
+        </div>
+
+    </section>
+
+
+    <!-- PROJECT SUMMARY -->
+
+    <section class="panel">
+
+        <div class="eyebrow">
+            PROJECT ANALYSIS
+        </div>
+
+        <h2>
+            {{ title }}
+        </h2>
+
+        <p>
+            {{ purpose }}
+        </p>
+
+        {% if summary %}
+
+        <div
+            style="
+                margin-top:16px;
+                padding:14px 16px;
+                border-radius:12px;
+                background:var(--surface-2);
+                border:1px solid var(--border);
+                line-height:1.6;
+            "
+        >
+
+            <strong>
+                LabVault AI:
+            </strong>
+
+            {{ summary }}
+
+        </div>
+
+        {% endif %}
+
+
+        {% if active_intents %}
+
+        <div style="margin-top:16px;">
+
+            <small>
+                Project areas detected:
+            </small>
+
+            <div
+                class="pending-items"
+                style="margin-top:8px;"
+            >
+
+                {% for intent in active_intents %}
+
+                <span class="pending-chip">
+                    {{ intent|replace('_', ' ')|title }}
+                </span>
+
+                {% endfor %}
+
+            </div>
+
+        </div>
+
+        {% endif %}
+
+    </section>
+
+
+    <!-- AVAILABLE RECOMMENDATIONS -->
+
+    <section class="panel">
+
+        <div class="eyebrow">
+            AVAILABLE FROM LABVAULT
+        </div>
+
+        <h2>
+            Recommended Components
+        </h2>
+
+        <p>
+            These recommendations come directly from the current
+            LabVault inventory.
+        </p>
+
+
+        <div class="pending-list">
+
+            {% for item in recommendations %}
+
+            <div class="pending-card">
+
+                <div class="pending-card-head">
+
+                    <div class="pending-card-title">
+
+                        <strong>
+                            {{ item['name'] }}
+                        </strong>
+
+                        <span class="pending-meta">
+                            {{ item['category'] }}
+                        </span>
+
+                    </div>
+
+
+                    <span class="status-pill approved">
+                        {{ item['available_qty'] }} available
+                    </span>
+
+                </div>
+
+
+                <p>
+                    {{ item['reason'] }}
+                </p>
+
+
+                <div
+                    style="
+                        display:flex;
+                        gap:16px;
+                        flex-wrap:wrap;
+                        margin-top:8px;
+                    "
+                >
+
+                    <small>
+                        Suggested quantity:
+                        <strong>
+                            {{ item['quantity'] }}
+                        </strong>
+                    </small>
+
+
+                    <small>
+                        Total stock:
+                        <strong>
+                            {{ item['total_qty'] }}
+                        </strong>
+                    </small>
+
+                </div>
+
+            </div>
+
+            {% else %}
+
+            <div class="empty-small">
+
+                <strong>
+                    No strong inventory matches found.
+                </strong>
+
+                <span>
+                    Try describing the sensors, control systems,
+                    communication methods, hardware, or application
+                    requirements used by your project.
+                </span>
+
+            </div>
+
+            {% endfor %}
+
+        </div>
+
+    </section>
+
+
+    <!-- UNAVAILABLE -->
+
+    {% if unavailable %}
+
+    <section class="panel">
+
+        <div class="eyebrow">
+            NOT CURRENTLY AVAILABLE
+        </div>
+
+        <h2>
+            Suggested but Out of Stock
+        </h2>
+
+        <p>
+            These components appear relevant to your project, but
+            they are currently unavailable in the LabVault inventory.
+        </p>
+
+
+        <div class="pending-list">
+
+            {% for item in unavailable %}
+
+            <div class="pending-card">
+
+                <div class="pending-card-head">
+
+                    <div class="pending-card-title">
+
+                        <strong>
+                            {{ item['name'] }}
+                        </strong>
+
+                        <span class="pending-meta">
+                            {{ item['category'] }}
+                        </span>
+
+                    </div>
+
+
+                    <span class="status-pill low">
+                        Currently unavailable
+                    </span>
+
+                </div>
+
+
+                <p>
+                    This component is relevant to your project,
+                    but LabVault currently has no available units.
+                </p>
+
+
+                <small>
+                    Suggested quantity:
+                    <strong>
+                        {{ item['quantity'] }}
+                    </strong>
+                </small>
+
+            </div>
+
+            {% endfor %}
+
+        </div>
+
+    </section>
+
+    {% endif %}
+
+
+    <!-- ALTERNATIVES -->
+
+    {% if alternatives %}
+
+    <section class="panel">
+
+        <div class="eyebrow">
+            LABVAULT ALTERNATIVES
+        </div>
+
+        <h2>
+            Available Alternatives
+        </h2>
+
+        <p>
+            These alternatives are selected only from components
+            currently available in your LabVault inventory.
+        </p>
+
+
+        <div class="pending-list">
+
+            {% for item in alternatives %}
+
+            <div class="pending-card">
+
+                <div class="pending-card-head">
+
+                    <div class="pending-card-title">
+
+                        <strong>
+                            {{ item['name'] }}
+                        </strong>
+
+                        <span class="pending-meta">
+                            {{ item['category'] }}
+                        </span>
+
+                    </div>
+
+
+                    <span class="status-pill approved">
+                        {{ item['available_qty'] }} available
+                    </span>
+
+                </div>
+
+
+                <p>
+                    This is an available component from the same
+                    inventory category and may be useful as an
+                    alternative.
+                </p>
+
+            </div>
+
+            {% endfor %}
+
+        </div>
+
+    </section>
+
+    {% endif %}
+
+
+    <!-- IMPORTANT INVENTORY NOTE -->
+
+    <section class="panel">
+
+        <div class="eyebrow">
+            LABVAULT INVENTORY RULE
+        </div>
+
+        <h2>
+            Recommendations use your laboratory inventory
+        </h2>
+
+        <p>
+            LabVault AI only identifies availability using the
+            components stored in your laboratory inventory.
+            It does not reserve, issue, or modify any component.
+        </p>
+
+        <div
+            style="
+                margin-top:14px;
+                padding:14px 16px;
+                border-radius:12px;
+                background:var(--surface-2);
+                border:1px solid var(--border);
+                line-height:1.6;
+            "
+        >
+
+            <strong>
+                Important:
+            </strong>
+
+            If the component you need is not in the LabVault inventory,
+            you may still see it under
+            <strong>
+                "Suggested but not currently available"
+            </strong>
+            so you know what would normally be useful for the project.
+
+        </div>
+
+    </section>
+
+</div>
+
 {% endblock %}

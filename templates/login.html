@@ -1,5 +1,175 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Lab Assistant' if role=='admin' else 'Student' }} sign in{% endblock %}
+
+{% block title %}
+{{ 'Lab Assistant' if role == 'admin'
+   else 'HOD' if role == 'hod'
+   else 'Student' }} sign in
+{% endblock %}
+
 {% block content %}
-<div class="auth-shell"><a href="/" class="brand auth-brand"><span class="brand-mark">⌁</span><span>Lab<span>Vault</span></span><small>AI</small></a><div class="auth-card"><div class="auth-icon">{{ '⌘' if role=='admin' else '⌁' }}</div><div class="eyebrow">SECURE ACCESS</div><h1>{{ 'Lab assistant workspace' if role=='admin' else 'Welcome back' }}</h1><p>{{ 'Manage the lab with confidence.' if role=='admin' else 'Your components are closer than you think.' }}</p><form method="post" class="form-stack"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="role" value="{{ role }}"><label>{{ 'Username or email' if role=='admin' else 'Student UID' }}<input required name="identity" placeholder="{{ 'admin' if role=='admin' else '23-IOT38-27' }}" autocomplete="username"></label><label>Password<div class="password-field"><input required type="password" name="password" placeholder="Enter your password" autocomplete="current-password"><button type="button" data-password-toggle>Show</button></div></label><button class="button full" type="submit">Sign in <span>→</span></button></form><div class="auth-switch">{% if role=='student' %}<span>New to LabVault?</span> <a href="{{ url_for('register') }}">Create an account</a><br><a href="{{ url_for('login', role='admin') }}">Lab assistant sign in →</a>{% else %}<a href="{{ url_for('login', role='student') }}">← Student sign in</a>{% endif %}</div></div><p class="auth-foot">Protected workspace · LabVault {{ now.year }}</p></div>
+
+<div class="auth-shell">
+
+<a href="/" class="brand auth-brand">
+    <span class="brand-mark">⌁</span>
+    <span>Lab<span>Vault</span></span>
+    <small>AI</small>
+</a>
+
+<div class="auth-card">
+
+    <div class="auth-icon">
+        {{ '⌘' if role == 'admin'
+   else '◈' if role == 'hod'
+   else '⌁' }}
+    </div>
+
+    <div class="eyebrow">
+        SECURE ACCESS
+    </div>
+
+    <h1>
+        {{ 'Lab assistant workspace'
+   if role == 'admin'
+   else 'HOD workspace'
+   if role == 'hod'
+   else 'Welcome back' }}
+    </h1>
+
+    <p>
+        {{ 'Manage the lab with confidence.'
+           if role == 'admin'
+           else 'Your components are closer than you think.' }}
+    </p>
+
+    <form method="post" class="form-stack">
+
+        <input
+            type="hidden"
+            name="csrf"
+            value="{{ csrf_token }}"
+        >
+
+        <input
+            type="hidden"
+            name="role"
+            value="{{ role }}"
+        >
+
+        <label>
+            {{ 'Username or email'
+   if role == 'admin'
+   else 'HOD email'
+   if role == 'hod'
+   else 'Student ERP ID' }}
+            <input
+                required
+                name="identity"
+                placeholder="{{ 'admin' if role == 'admin' else 'S1032230450' }}"
+                autocomplete="username"
+            >
+        </label>
+
+        <label>
+            Password
+
+            <div class="password-field">
+
+                <input
+                    required
+                    type="password"
+                    name="password"
+                    placeholder="Enter your password"
+                    autocomplete="current-password"
+                >
+
+                <button
+                    type="button"
+                    data-password-toggle
+                >
+                    Show
+                </button>
+
+            </div>
+        </label>
+
+        <button
+            class="button full"
+            type="submit"
+        >
+            Sign in
+            <span>→</span>
+        </button>
+
+    </form>
+
+    {% if role == 'student' %}
+
+    <div class="auth-switch">
+        <a href="{{ url_for('forgot_password') }}">
+            Forgot password?
+        </a>
+    </div>
+
+    {% endif %}
+
+    <div class="auth-switch">
+
+    {% if role == 'student' %}
+
+        <span>New to LabVault?</span>
+
+        <a href="{{ url_for('register') }}">
+            Create an account
+        </a>
+
+        <br>
+
+        <a href="{{ url_for('login', role='admin') }}">
+            Lab assistant sign in →
+        </a>
+
+        <br>
+
+        <a href="{{ url_for('login', role='hod') }}">
+            HOD sign in →
+        </a>
+
+    {% elif role == 'admin' %}
+
+        <a href="{{ url_for('login', role='student') }}">
+            ← Student sign in
+        </a>
+
+        <br>
+
+        <a href="{{ url_for('login', role='hod') }}">
+            HOD sign in →
+        </a>
+
+    {% else %}
+
+        <a href="{{ url_for('login', role='student') }}">
+            ← Student sign in
+        </a>
+
+        <br>
+
+        <a href="{{ url_for('login', role='admin') }}">
+            Lab assistant sign in →
+        </a>
+
+    {% endif %}
+
+</div>
+
+</div>
+
+<p class="auth-foot">
+    Protected workspace · LabVault {{ now.year }}
+</p>
+
+
+</div>
+
 {% endblock %}

@@ -1,5 +1,435 @@
 {% extends "base.html" %}
-{% block title %}{{ stage|title }} approval{% endblock %}
+
+{% block title %}
+    {% if extension_reason is defined %}
+        Extension Approval
+    {% else %}
+        Request Approval
+    {% endif %}
+{% endblock %}
+
 {% block content %}
-<div class="approval-shell"><div class="approval-brand"><a class="brand" href="/"><span class="brand-mark">⌁</span><span>Lab<span>Vault</span></span><small>AI</small></a><span class="secure-label">Secure review link</span></div>{% if error %}<div class="approval-card center"><div class="approval-symbol error-symbol">!</div><div class="eyebrow">REVIEW UNAVAILABLE</div><h1>{{ error }}</h1><p>This link is protected and can only be used for its intended review stage.</p><a href="/" class="button">Return to LabVault <span>→</span></a></div>{% elif complete %}<div class="approval-card center"><div class="approval-symbol success-symbol">✓</div><div class="eyebrow">{{ stage|upper }} REVIEW</div><h1>{{ complete }}</h1><p>{% if stage=='mentor' %}The request has been approved successfully. HOD approval is now required.{% else %}The student and lab assistant have been notified. The request is ready for collection.{% endif %}</p><a href="/" class="button">Close review <span>→</span></a></div>{% else %}<div class="approval-card"><div class="approval-top"><div><div class="eyebrow">{{ stage|upper }} APPROVAL</div><h1>Review component request</h1><p>{{ req['request_code'] }} · submitted {{ req['created_at'][:10] }}</p></div><span class="status-pill pending">Action required</span></div><div class="approval-grid"><div><div class="detail-label">Student</div><strong>{{ req['student_name'] }}</strong><span>{{ req['uid'] }} · {{ req['branch'] }} · {{ req['year'] }}</span></div><div><div class="detail-label">Project</div><strong>{{ req['project_title'] }}</strong><span>{{ req['purpose'] }}</span></div><div><div class="detail-label">Requested return</div><strong>{{ req['due_date'] }}</strong><span>Maximum 7 days</span></div><div><div class="detail-label">{{ 'HOD' if stage=='mentor' else 'Mentor' }} contact</div><strong>{{ req['hod_name'] if stage=='mentor' else req['mentor_name'] }}</strong><span>{{ req['hod_email'] if stage=='mentor' else req['mentor_email'] }}</span></div></div><div class="approval-items"><h3>Requested components</h3>{% for item in items %}<div><span>{{ item['name'] }}</span><small>{{ item['category'] }} · {{ item['location'] }}</small><b>× {{ item['quantity'] }}</b></div>{% endfor %}</div><div class="responsibility"><span>✓</span><p>The student accepts responsibility for returning all issued components in good working condition.</p></div><form method="post" class="approval-actions"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="button danger-button" name="decision" value="reject" type="submit" onclick="return promptReject(this.form)">Reject request</button><button class="button" name="decision" value="approve" type="submit">Approve request <span>→</span></button><input type="hidden" name="reason" id="reject-reason"></form></div>{% endif %}<p class="approval-foot">LabVault · Review actions are recorded securely.</p></div>
+
+<div class="page-wrap">
+
+    <section class="page-heading">
+
+        <div>
+            <div class="eyebrow">
+                {% if extension_reason is defined %}
+                    EXTENSION APPROVAL
+                {% else %}
+                    REQUEST APPROVAL
+                {% endif %}
+            </div>
+
+            <h1>
+                {% if complete %}
+                    Approval completed.
+                {% elif error %}
+                    Approval unavailable.
+                {% elif extension_reason is defined %}
+                    Review extension request.
+                {% elif stage == 'mentor' %}
+                    Mentor approval required.
+                {% else %}
+                    HOD approval required.
+                {% endif %}
+            </h1>
+
+            <p>
+                {% if extension_reason is defined %}
+                    Review the student's extension request and decide whether it should move to the next approval stage.
+                {% elif stage == 'mentor' %}
+                    Review this component request before it moves to HOD approval.
+                {% elif stage == 'hod' %}
+                    Review this component request before final approval.
+                {% else %}
+                    Review the request details below.
+                {% endif %}
+            </p>
+        </div>
+
+    </section>
+
+
+    {% if error %}
+
+        <section class="panel">
+
+            <div class="eyebrow">UNAVAILABLE</div>
+
+            <h2>Approval cannot be completed</h2>
+
+            <p>{{ error }}</p>
+
+        </section>
+
+
+    {% elif complete %}
+
+        <section class="panel">
+
+            <div class="eyebrow">COMPLETED</div>
+
+            <h2>{{ complete|replace('_', ' ')|title }}</h2>
+
+            <p>
+                This approval action has been recorded successfully.
+            </p>
+
+        </section>
+
+
+    {% else %}
+
+        <div class="content-grid">
+
+            <section class="panel">
+
+                <div class="panel-head">
+
+                    <div>
+                        <div class="eyebrow">
+                            {% if extension_reason is defined %}
+                                EXTENSION REQUEST
+                            {% else %}
+                                REQUEST DETAILS
+                            {% endif %}
+                        </div>
+
+                        <h2>
+                            {{ req['request_code'] }}
+                        </h2>
+                    </div>
+
+                    <span class="status-pill pending">
+                        {% if extension_reason is defined %}
+                            Extension pending
+                        {% else %}
+                            {{ req['overall_status']|replace('_', ' ')|title }}
+                        {% endif %}
+                    </span>
+
+                </div>
+
+
+                <!-- STUDENT INFORMATION -->
+                <div class="panel" style="margin-top:20px;">
+
+                    <div class="eyebrow">
+                        STUDENT INFORMATION
+                    </div>
+
+                    <h3 style="margin-top:8px;">
+                        Student details
+                    </h3>
+
+                    <div class="form-grid" style="margin-top:16px;">
+
+                        <div>
+                            <small>Full Name</small>
+                            <strong>{{ req['student_name'] }}</strong>
+                        </div>
+
+                        <div>
+                            <small>UID / Roll No.</small>
+                            <strong>{{ req['uid'] }}</strong>
+                        </div>
+
+                        <div>
+                            <small>Branch</small>
+                            <strong>{{ req['branch'] or 'N/A' }}</strong>
+                        </div>
+
+                        <div>
+                            <small>Division</small>
+                            <strong>{{ req['division'] or 'N/A' }}</strong>
+                        </div>
+
+                        <div>
+                            <small>Year</small>
+                            <strong>{{ req['year'] or 'N/A' }}</strong>
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- ORIGINAL REQUEST -->
+                <div class="panel" style="margin-top:20px;">
+
+                    <div class="eyebrow">
+                        ORIGINAL REQUEST
+                    </div>
+
+                    <div style="margin-top:16px;">
+
+                        <div>
+                            <small>Project Name</small>
+                            <strong>{{ req['project_title'] }}</strong>
+                        </div>
+
+                        <div style="margin-top:18px;">
+
+                            <small>Purpose of Project</small>
+
+                            <p style="margin-top:6px;">
+                                {{ req['purpose'] }}
+                            </p>
+
+                        </div>
+
+
+                        {% if extension_reason is not defined %}
+
+                            <!-- COMPONENTS -->
+                            <div style="margin-top:20px;">
+
+                                <div class="eyebrow">
+                                    COMPONENTS
+                                </div>
+
+                                <div class="pending-items">
+
+                                    {% for item in items %}
+
+                                        <span class="pending-chip">
+
+                                            {{ item['name'] }}
+
+                                            <b>
+                                                × {{ item['quantity'] }}
+                                            </b>
+
+                                        </span>
+
+                                    {% else %}
+
+                                        <span class="muted">
+                                            No components found.
+                                        </span>
+
+                                    {% endfor %}
+
+                                </div>
+
+                            </div>
+
+                        {% endif %}
+
+
+                        <div class="form-grid" style="margin-top:20px;">
+
+                            <div>
+                                <small>Return Window</small>
+
+                                <strong>
+                                    {{ req['return_days'] }} day(s)
+                                </strong>
+                            </div>
+
+                            <div>
+                                <small>Request ID</small>
+
+                                <strong>
+                                    {{ req['request_code'] }}
+                                </strong>
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- EXTENSION DETAILS -->
+                {% if extension_reason is defined %}
+
+                    <div class="panel" style="margin-top:20px;">
+
+                        <div class="eyebrow">
+                            EXTENSION DETAILS
+                        </div>
+
+                        <div style="margin-top:16px;">
+
+                            <div>
+                                <small>Requested Extension</small>
+
+                                <strong>
+                                    {{ extension_days }} day(s)
+                                </strong>
+                            </div>
+
+
+                            <div style="margin-top:18px;">
+
+                                <small>
+                                    Reason for Extension
+                                </small>
+
+                                <p style="margin-top:6px;">
+                                    {{ extension_reason }}
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                {% endif %}
+
+            </section>
+
+
+            <aside class="side-stack">
+
+                <section class="panel">
+
+                    <div class="eyebrow">
+                        APPROVAL STAGE
+                    </div>
+
+                    <h2>
+
+                        {% if extension_reason is defined %}
+
+                            {% if stage == 'mentor' %}
+                                Mentor Review
+                            {% else %}
+                                HOD Review
+                            {% endif %}
+
+                        {% elif stage == 'mentor' %}
+
+                            Mentor Review
+
+                        {% elif stage == 'hod' %}
+
+                            HOD Review
+
+                        {% endif %}
+
+                    </h2>
+
+
+                    {% if extension_reason is defined %}
+
+                        {% if stage == 'mentor' %}
+
+                            <p>
+                                The Lab Assistant has approved this extension.
+                                Your decision will determine whether it moves to the HOD.
+                            </p>
+
+                        {% else %}
+
+                            <p>
+                                The Mentor has approved this extension.
+                                Your decision will determine whether the extension is finally approved.
+                            </p>
+
+                        {% endif %}
+
+                    {% elif stage == 'mentor' %}
+
+                        <p>
+                            The Lab Assistant has approved this component request.
+                            Your approval is required before it moves to the HOD.
+                        </p>
+
+                    {% elif stage == 'hod' %}
+
+                        <p>
+                            The Mentor has approved this component request.
+                            Your approval is required for final collection approval.
+                        </p>
+
+                    {% endif %}
+
+                </section>
+
+
+                <section class="panel">
+
+                    <div class="eyebrow">
+                        YOUR DECISION
+                    </div>
+
+                    <h2>
+                        Approve or reject
+                    </h2>
+
+
+                    <form
+                        method="post"
+                        class="form-stack"
+                    >
+
+                        <input
+                            type="hidden"
+                            name="csrf"
+                            value="{{ csrf_token }}"
+                        >
+
+
+                        <label>
+
+                            Rejection reason
+
+                            <input
+                                class="mini-input"
+                                name="reason"
+                                placeholder="Reason if rejecting"
+                            >
+
+                        </label>
+
+
+                        <div
+                            style="
+                                display:flex;
+                                gap:10px;
+                                margin-top:8px;
+                            "
+                        >
+
+                            <button
+                                class="button ghost"
+                                type="submit"
+                                name="decision"
+                                value="reject"
+                            >
+                                Reject
+                            </button>
+
+
+                            <button
+                                class="button"
+                                type="submit"
+                                name="decision"
+                                value="approve"
+                            >
+                                Approve
+                                <span>→</span>
+                            </button>
+
+                        </div>
+
+                    </form>
+
+                </section>
+
+            </aside>
+
+        </div>
+
+    {% endif %}
+
+</div>
+
 {% endblock %}

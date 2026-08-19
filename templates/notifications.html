@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="page-wrap">
+
+    <div class="page-heading">
+
+        <div>
+            <div class="eyebrow">ACTIVITY</div>
+            <h1>Notifications</h1>
+        </div>
+
+        <div class="heading-actions">
+            <form method="post" action="{{ url_for('read_notifications') }}">
+                <input type="hidden" name="csrf" value="{{ csrf_token }}">
+                <button class="button small" type="submit">Mark all as read</button>
+            </form>
+        </div>
+
+    </div>
+
+
+    <section class="panel">
+
+        {% for n in items %}
+
+        <div class="notification-row {{ 'is-unread' if not n['is_read'] }}">
+
+            <span class="request-badge">
+                {{ '●' if not n['is_read'] else '○' }}
+            </span>
+
+            <div>
+                <strong>{{ n['title'] }}</strong>
+
+                <p class="notif-body">
+                    {{ n['body'] }}
+                </p>
+
+                <time class="notif-time">
+                    {{ n['created_at']|ist }}
+                </time>
+            </div>
+
+        </div>
+
+        {% else %}
+
+        <div class="empty-small">
+            <strong>No notifications yet.</strong>
+            <span>Updates on your requests and approvals will show up here.</span>
+        </div>
+
+        {% endfor %}
+
+    </section>
+
+</div>
+
+{% endblock %}

@@ -1,9 +1,1100 @@
 {% extends "base.html" %}
+
 {% block title %}Student overview{% endblock %}
+
 {% block content %}
-<div class="page-wrap"><section class="page-heading"><div><div class="eyebrow">STUDENT WORKSPACE</div><h1>Good to see you, {{ current_user['full_name'].split(' ')[0] }}.</h1><p>Find what your next build needs.</p></div><div class="heading-actions"><a class="button ghost" href="#assistant">✦ Ask LabVault AI</a><a class="button" href="#inventory">Browse inventory <span>→</span></a></div></section>
-  <section class="stats-row"><div class="stat-card"><span class="stat-icon blue">⌁</span><div><small>Available items</small><strong>{{ items|length }}</strong><span>in your current search</span></div></div><div class="stat-card"><span class="stat-icon purple">◷</span><div><small>Open requests</small><strong>{{ requests|selectattr('overall_status','ne','REJECTED')|list|length }}</strong><span>across your projects</span></div></div><div class="stat-card"><span class="stat-icon green">◈</span><div><small>Currently issued</small><strong>{{ issues|length }}</strong><span>components with you</span></div></div><div class="cart-card"><span class="cart-symbol">▱</span><div><small>Request list</small><strong>{{ cart|length }} <span>items</span></strong></div><a href="{{ url_for('create_request') }}">Review <span>→</span></a></div></section>
-  <div class="content-grid"><section class="panel inventory-panel" id="inventory"><div class="panel-head"><div><div class="eyebrow">CATALOG</div><h2>Available components</h2></div><span class="muted">{{ items|length }} results</span></div><form class="filter-bar" method="get"><div class="search-input"><span>⌕</span><input name="q" value="{{ term }}" placeholder="Search components, stock no. or category…"></div><select name="category"><option value="">All categories</option>{% for c in categories %}<option value="{{ c['category'] }}" {% if selected_category==c['category'] %}selected{% endif %}>{{ c['category'] }}</option>{% endfor %}</select><select name="availability"><option value="">Any availability</option><option value="available" {% if availability=='available' %}selected{% endif %}>Available now</option><option value="low" {% if availability=='low' %}selected{% endif %}>Low stock</option></select><button class="button small" type="submit">Filter</button></form><div class="inventory-list">{% for item in items %}<article class="inventory-item"><div class="item-mark {{ 'blue' if loop.index%3==1 else 'purple' if loop.index%3==2 else 'green' }}">{{ item['name'][0] }}</div><div class="item-info"><h3>{{ item['name'] }}</h3><p>{{ item['category'] }} <span>·</span> {{ item['location'] or 'Main Lab' }}</p>{% if item['stock_number'] %}<small>{{ item['stock_number'] }}</small>{% endif %}</div><div class="item-quantity"><strong>{{ item['available_qty'] }}</strong><span>of {{ item['total_qty'] }} available</span></div><span class="status-dot {{ 'danger' if item['available_qty']==0 else 'warning' if item['available_qty']<=item['minimum_stock'] else 'success' }}">{{ 'Out' if item['available_qty']==0 else 'Low' if item['available_qty']<=item['minimum_stock'] else 'Ready' }}</span><form method="post" action="{{ url_for('cart_add', item_id=item['id']) }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="add-button" {% if item['available_qty']==0 %}disabled{% endif %}>+ Add</button></form></article>{% else %}<div class="empty-state"><span>⌕</span><h3>No components match that search.</h3><p>Try a different term or clear your filters.</p></div>{% endfor %}</div></section><aside class="side-stack"><section class="panel request-panel" id="requests"><div class="panel-head"><div><div class="eyebrow">YOUR ACTIVITY</div><h2>Recent requests</h2></div><a href="#requests" class="text-link">View all</a></div>{% for req in requests %}<div class="mini-request"><span class="request-badge">{{ req['request_code'][-3:] }}</span><div><strong>{{ req['project_title'] }}</strong><small>{{ req['request_code'] }} · {{ req['created_at'][:10] }}</small></div><span class="status-pill {{ req['overall_status']|lower }}">{{ req['overall_status']|replace('_',' ')|title }}</span></div>{% else %}<div class="empty-small"><strong>Your request history starts here.</strong><span>Add components to send your first request.</span></div>{% endfor %}</section><section class="panel issued-panel" id="issued"><div class="panel-head"><div><div class="eyebrow">IN YOUR CARE</div><h2>Issued components</h2></div></div>{% for issue in issues %}<div class="issue-line"><div><strong>{{ issue['request_code'] }}</strong><small>Due {{ issue['due_date'] }}</small></div><form method="post" action="{{ url_for('generate_return_otp', issue_id=issue['id']) }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="text-button">Generate return OTP</button></form></div>{% else %}<div class="empty-small"><strong>Nothing issued right now.</strong><span>Approved requests appear here after collection.</span></div>{% endfor %}</section></aside></div>
-  <section class="ai-panel" id="assistant"><div class="ai-copy"><span class="ai-spark">✦</span><div><div class="eyebrow">LABVAULT AI</div><h2>Turn a project idea into a parts list.</h2><p>Tell us what you are building. We’ll match the idea against your actual inventory.</p></div></div><form method="post" action="{{ url_for('assistant') }}" class="ai-form"><input name="title" required placeholder="Project title"><input name="purpose" required placeholder="What are you trying to build?"><button class="button" type="submit">Find components <span>→</span></button></form></section>
+
+<div class="page-wrap">
+
+<section class="page-heading">
+
+    <div>
+
+        <div class="eyebrow">
+            STUDENT WORKSPACE
+        </div>
+
+        <h1>
+            Good to see you, {{ current_user['full_name'].split(' ')[0] }}.
+        </h1>
+
+        <p>
+            Find what your next build needs.
+        </p>
+
+    </div>
+
+    <div class="heading-actions">
+
+        <a class="button ghost" href="#assistant">
+            ✦ Ask LabVault AI
+        </a>
+
+        <a class="button" href="#inventory">
+            Browse inventory <span>→</span>
+        </a>
+
+    </div>
+
+</section>
+
+
+<section class="stats-row">
+
+    <div class="stat-card">
+
+        <span class="stat-icon blue">
+            ⌁
+        </span>
+
+        <div>
+
+            <small>
+                Available items
+            </small>
+
+            <strong>
+                {{ items|length }}
+            </strong>
+
+            <span>
+                in your current search
+            </span>
+
+        </div>
+
+    </div>
+
+
+    <div class="stat-card">
+
+        <span class="stat-icon purple">
+            ◷
+        </span>
+
+        <div>
+
+            <small>
+                Open requests
+            </small>
+
+            <strong>
+                {{ requests|selectattr('overall_status', 'ne', 'REJECTED')|list|length }}
+            </strong>
+
+            <span>
+                across your projects
+            </span>
+
+        </div>
+
+    </div>
+
+
+    <div class="stat-card">
+
+        <span class="stat-icon green">
+            ◈
+        </span>
+
+        <div>
+
+            <small>
+                Currently issued
+            </small>
+
+            <strong>
+                {{ issues|length }}
+            </strong>
+
+            <span>
+                components with you
+            </span>
+
+        </div>
+
+    </div>
+
+
+    <div class="cart-card">
+
+        <span class="cart-symbol">
+            ▱
+        </span>
+
+        <div>
+
+            <small>
+                Request list
+            </small>
+
+            <strong>
+                {{ cart|length }}
+                <span>items</span>
+            </strong>
+
+        </div>
+
+        <a href="{{ url_for('create_request') }}">
+            Review <span>→</span>
+        </a>
+
+    </div>
+
+</section>
+
+
+<div class="content-grid">
+
+
+<section class="panel inventory-panel" id="inventory">
+
+    <div class="panel-head">
+
+        <div>
+
+            <div class="eyebrow">
+                CATALOG
+            </div>
+
+            <h2>
+                Available components
+            </h2>
+
+        </div>
+
+        <span class="muted">
+            {{ items|length }} results
+        </span>
+
+    </div>
+
+
+    <form class="filter-bar" method="get">
+
+        <div class="search-input">
+
+            <span>
+                ⌕
+            </span>
+
+            <input
+                name="q"
+                value="{{ term }}"
+                placeholder="Search components, stock no. or category…"
+            >
+
+        </div>
+
+
+        <select name="category">
+
+            <option value="">
+                All categories
+            </option>
+
+            {% for c in categories %}
+
+            <option
+                value="{{ c['category'] }}"
+                {% if selected_category == c['category'] %}selected{% endif %}
+            >
+                {{ c['category'] }}
+            </option>
+
+            {% endfor %}
+
+        </select>
+
+
+        <select name="availability">
+
+            <option value="">
+                Any availability
+            </option>
+
+            <option
+                value="available"
+                {% if availability == 'available' %}selected{% endif %}
+            >
+                Available now
+            </option>
+
+            <option
+                value="low"
+                {% if availability == 'low' %}selected{% endif %}
+            >
+                Low stock
+            </option>
+
+        </select>
+
+
+        <button
+            class="button small"
+            type="submit"
+        >
+            Filter
+        </button>
+
+    </form>
+
+
+    <div class="inventory-list">
+
+        {% for item in items %}
+
+        <article class="inventory-item">
+
+            <div class="item-mark {{ 'blue' if loop.index % 3 == 1 else 'purple' if loop.index % 3 == 2 else 'green' }}">
+                {{ item['name'][0] }}
+            </div>
+
+
+            <div class="item-info">
+
+                <h3>
+                    {{ item['name'] }}
+                </h3>
+
+                <p>
+
+                    {{ item['category'] }}
+
+                    <span>
+                        ·
+                    </span>
+
+                    {{ item['location'] or 'Main Lab' }}
+
+                </p>
+
+                {% if item['stock_number'] %}
+
+                <small>
+                    {{ item['stock_number'] }}
+                </small>
+
+                {% endif %}
+
+            </div>
+
+
+            <div class="item-quantity">
+
+                <strong>
+                    {{ item['available_qty'] }}
+                </strong>
+
+                <span>
+                    of {{ item['total_qty'] }} available
+                </span>
+
+            </div>
+
+
+            <span class="status-dot {{ 'danger' if item['available_qty'] == 0 else 'warning' if item['available_qty'] <= item['minimum_stock'] else 'success' }}">
+
+                {{ 'Out'
+                   if item['available_qty'] == 0
+                   else 'Low'
+                   if item['available_qty'] <= item['minimum_stock']
+                   else 'Ready'
+                }}
+
+            </span>
+
+
+            <form
+                method="post"
+                action="{{ url_for('cart_add', item_id=item['id']) }}"
+            >
+
+                <input
+                    type="hidden"
+                    name="csrf"
+                    value="{{ csrf_token }}"
+                >
+
+                <button
+                    class="add-button"
+                    {% if item['available_qty'] == 0 %}disabled{% endif %}
+                >
+                    + Add
+                </button>
+
+            </form>
+
+        </article>
+
+
+        {% else %}
+
+        <div class="empty-state">
+
+            <span>
+                ⌕
+            </span>
+
+            <h3>
+                No components match that search.
+            </h3>
+
+            <p>
+                Try a different term or clear your filters.
+            </p>
+
+        </div>
+
+        {% endfor %}
+
+    </div>
+
+</section>
+
+
+<aside class="side-stack">
+
+
+<section class="panel request-panel" id="requests">
+
+    <div class="panel-head">
+
+        <div>
+
+            <div class="eyebrow">
+                YOUR ACTIVITY
+            </div>
+
+            <h2>
+                Recent requests
+            </h2>
+
+        </div>
+
+        {% if show_all_requests %}
+
+        <a
+            href="{{ url_for('student_dashboard') }}#requests"
+            class="text-link"
+        >
+            View recent
+        </a>
+
+        {% else %}
+
+        <a
+            href="{{ url_for('student_dashboard', all=1) }}#requests"
+            class="text-link"
+        >
+            View all
+        </a>
+
+        {% endif %}
+
+    </div>
+
+
+    {% for req in requests %}
+
+    <div class="mini-request">
+
+        <span class="request-badge">
+            {{ req['request_code'][-3:] }}
+        </span>
+
+        <div>
+
+            <strong>
+                {{ req['project_title'] }}
+            </strong>
+
+            <small>
+                {{ req['request_code'] }}
+                ·
+                {{ req['created_at'][:10] }}
+            </small>
+
+            {% if request_items_map[req['id']] %}
+
+            <div
+                style="
+                    display:flex;
+                    flex-wrap:wrap;
+                    gap:6px;
+                    margin-top:8px;
+                "
+            >
+
+                {% for item in request_items_map[req['id']] %}
+
+                <span class="pending-chip">
+
+                    {{ item['name'] }}
+
+                    <b>
+                        × {{ item['quantity'] }}
+                    </b>
+
+                </span>
+
+                {% endfor %}
+
+            </div>
+
+            {% else %}
+
+            <small style="margin-top:6px;">
+                No component details available.
+            </small>
+
+            {% endif %}
+
+        </div>
+
+
+        <span class="status-pill {{ req['overall_status']|lower }}">
+
+            {{ req['overall_status']|replace('_',' ')|title }}
+
+        </span>
+
+
+        {% if req['overall_status'] == 'FULLY_APPROVED' and not req['has_issue'] %}
+
+        <form
+            method="post"
+            action="{{ url_for('generate_collection_otp', request_id=req['id']) }}"
+        >
+
+            <input
+                type="hidden"
+                name="csrf"
+                value="{{ csrf_token }}"
+            >
+
+            <button class="text-button">
+                Generate Collection OTP
+            </button>
+
+        </form>
+
+        {% endif %}
+
+    </div>
+
+
+    <!-- MENTOR / HOD CONTACT DETAILS -->
+
+    <details
+        class="request-contact-details"
+        style="margin-top:12px;"
+    >
+
+        <summary
+            style="
+                cursor:pointer;
+                list-style:none;
+                display:flex;
+                align-items:center;
+                justify-content:space-between;
+                gap:12px;
+                padding:12px 14px;
+                border:1px solid var(--line);
+                border-radius:10px;
+                background:var(--surface-2);
+                color:var(--text);
+                font-weight:700;
+            "
+        >
+
+            <span>
+                Mentor &amp; HOD contact details
+            </span>
+
+            <span
+                style="
+                    color:var(--blue);
+                    font-size:.72rem;
+                "
+            >
+                View →
+            </span>
+
+        </summary>
+
+
+        <div
+            class="panel"
+            style="margin-top:10px;"
+        >
+
+            {% if req['overall_status'] in [
+                'PENDING_ADMIN',
+                'PENDING_MENTOR',
+                'PENDING_HOD'
+            ] %}
+
+            <p class="panel-subtitle">
+
+                Contact information for this project.
+                You can update these details while the request is still being reviewed.
+
+            </p>
+
+
+            <form
+                method="post"
+                action="{{ url_for('edit_request_contacts', request_id=req['id']) }}"
+                class="form-stack"
+            >
+
+                <input
+                    type="hidden"
+                    name="csrf"
+                    value="{{ csrf_token }}"
+                >
+
+
+                <div class="eyebrow">
+                    MENTOR
+                </div>
+
+
+                <div class="form-grid">
+
+                    <label>
+
+                        Mentor name
+
+                        <input
+                            name="mentor_name"
+                            value="{{ req['mentor_name'] or '' }}"
+                            required
+                        >
+
+                    </label>
+
+
+                    <label>
+
+                        Mentor email
+
+                        <input
+                            type="email"
+                            name="mentor_email"
+                            value="{{ req['mentor_email'] or '' }}"
+                            required
+                        >
+
+                    </label>
+
+
+                    <label>
+
+                        Mentor phone
+
+                        <input
+                            name="mentor_phone"
+                            value="{{ req['mentor_phone'] or '' }}"
+                        >
+
+                    </label>
+
+                </div>
+
+
+                <div
+                    class="eyebrow"
+                    style="margin-top:20px;"
+                >
+                    HOD
+                </div>
+
+
+                <div class="form-grid">
+
+                    <label>
+
+                        HOD name
+
+                        <input
+                            name="hod_name"
+                            value="{{ req['hod_name'] or '' }}"
+                            required
+                        >
+
+                    </label>
+
+
+                    <label>
+
+                        HOD email
+
+                        <input
+                            type="email"
+                            name="hod_email"
+                            value="{{ req['hod_email'] or '' }}"
+                            required
+                        >
+
+                    </label>
+
+
+                    <label>
+
+                        HOD phone
+
+                        <input
+                            name="hod_phone"
+                            value="{{ req['hod_phone'] or '' }}"
+                        >
+
+                    </label>
+
+                </div>
+
+
+                <button
+                    class="button small"
+                    type="submit"
+                >
+
+                    Save contact changes
+
+                    <span>
+                        →
+                    </span>
+
+                </button>
+
+            </form>
+
+
+            {% else %}
+
+
+            <div>
+
+                <div class="eyebrow">
+                    MENTOR
+                </div>
+
+
+                <div class="form-grid">
+
+                    <div>
+
+                        <small>
+                            Mentor name
+                        </small>
+
+                        <strong>
+                            {{ req['mentor_name'] or 'Not provided' }}
+                        </strong>
+
+                    </div>
+
+
+                    <div>
+
+                        <small>
+                            Mentor email
+                        </small>
+
+                        <strong>
+                            {{ req['mentor_email'] or 'Not provided' }}
+                        </strong>
+
+                    </div>
+
+
+                    <div>
+
+                        <small>
+                            Mentor phone
+                        </small>
+
+                        <strong>
+                            {{ req['mentor_phone'] or 'Not provided' }}
+                        </strong>
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    class="eyebrow"
+                    style="margin-top:20px;"
+                >
+                    HOD
+                </div>
+
+
+                <div class="form-grid">
+
+                    <div>
+
+                        <small>
+                            HOD name
+                        </small>
+
+                        <strong>
+                            {{ req['hod_name'] or 'Not provided' }}
+                        </strong>
+
+                    </div>
+
+
+                    <div>
+
+                        <small>
+                            HOD email
+                        </small>
+
+                        <strong>
+                            {{ req['hod_email'] or 'Not provided' }}
+                        </strong>
+
+                    </div>
+
+
+                    <div>
+
+                        <small>
+                            HOD phone
+                        </small>
+
+                        <strong>
+                            {{ req['hod_phone'] or 'Not provided' }}
+                        </strong>
+
+                    </div>
+
+                </div>
+
+
+                <p
+                    class="panel-subtitle"
+                    style="margin-top:16px;"
+                >
+                    Contact details are locked after the request is approved or rejected.
+                </p>
+
+            </div>
+
+
+            {% endif %}
+
+        </div>
+
+    </details>
+
+
+    {% else %}
+
+    <div class="empty-small">
+
+        <strong>
+            Your request history starts here.
+        </strong>
+
+        <span>
+            Add components to send your first request.
+        </span>
+
+    </div>
+
+    {% endfor %}
+
+</section>
+
+
+<section class="panel issued-panel" id="issued">
+
+    <div class="panel-head">
+
+        <div>
+
+            <div class="eyebrow">
+                IN YOUR CARE
+            </div>
+
+            <h2>
+                Issued components
+            </h2>
+
+        </div>
+
+    </div>
+
+
+    {% for issue in issues %}
+
+    <div class="issue-line">
+
+        <div>
+
+            <strong>
+                {{ issue['request_code'] }}
+            </strong>
+
+            <small>
+                Due {{ issue['due_date'] }}
+            </small>
+
+        </div>
+
+
+        {% if issue['extensions_used'] < 1 %}
+
+            {% if issue['extension_status'] == 'NONE' %}
+
+            <form
+                method="post"
+                action="{{ url_for('extend_due_date', issue_id=issue['id']) }}"
+                class="extend-form"
+            >
+
+                <input
+                    type="hidden"
+                    name="csrf"
+                    value="{{ csrf_token }}"
+                >
+
+
+                <select
+                    name="days"
+                    required
+                >
+
+                    {% for day in [3, 5, 7] %}
+
+                    <option value="{{ day }}">
+                        +{{ day }}d
+                    </option>
+
+                    {% endfor %}
+
+                </select>
+
+
+                <input
+                    required
+                    name="reason"
+                    placeholder="Reason for extension"
+                    class="mini-input"
+                >
+
+
+                <button
+                    class="text-button"
+                    type="submit"
+                >
+                    Request Extension
+                </button>
+
+            </form>
+
+
+            {% elif issue['extension_status'] == 'PENDING_ADMIN' %}
+
+            <div class="extend-note">
+
+                <strong>
+                    Extension pending
+                </strong>
+
+                <small>
+                    Waiting for Lab Assistant approval
+                </small>
+
+            </div>
+
+
+            {% elif issue['extension_status'] == 'PENDING_MENTOR' %}
+
+            <div class="extend-note">
+
+                <strong>
+                    Extension approved by Lab Assistant
+                </strong>
+
+                <small>
+                    Waiting for Mentor approval
+                </small>
+
+            </div>
+
+
+            {% elif issue['extension_status'] == 'PENDING_HOD' %}
+
+            <div class="extend-note">
+
+                <strong>
+                    Extension approved by Mentor
+                </strong>
+
+                <small>
+                    Waiting for HOD approval
+                </small>
+
+            </div>
+
+
+            {% elif issue['extension_status'] == 'APPROVED' %}
+
+            <div class="extend-note">
+
+                <strong>
+                    Extension approved ✓
+                </strong>
+
+                <small>
+                    Your due date has been extended.
+                </small>
+
+            </div>
+
+
+            {% elif issue['extension_status'] == 'REJECTED' %}
+
+            <div class="extend-note">
+
+                <strong>
+                    Extension rejected
+                </strong>
+
+                <small>
+                    You may request an extension again if allowed.
+                </small>
+
+            </div>
+
+            {% endif %}
+
+        {% else %}
+
+        <span class="extend-note">
+            Extended
+        </span>
+
+        {% endif %}
+
+
+        <form
+            method="post"
+            action="{{ url_for('generate_return_otp', issue_id=issue['id']) }}"
+        >
+
+            <input
+                type="hidden"
+                name="csrf"
+                value="{{ csrf_token }}"
+            >
+
+            <button class="text-button">
+                Generate return OTP
+            </button>
+
+        </form>
+
+    </div>
+
+
+    {% else %}
+
+    <div class="empty-small">
+
+        <strong>
+            Nothing issued right now.
+        </strong>
+
+        <span>
+            Approved requests appear here after collection.
+        </span>
+
+    </div>
+
+    {% endfor %}
+
+</section>
+
+
+</aside>
+
 </div>
+
+
+<section class="ai-panel" id="assistant">
+
+    <div class="ai-copy">
+
+        <span class="ai-spark">
+            ✦
+        </span>
+
+        <div>
+
+            <div class="eyebrow">
+                LABVAULT AI
+            </div>
+
+            <h2>
+                Build your project with LabVault AI.
+            </h2>
+
+            <p>
+                Tell LabVault what you are building and we’ll recommend
+                suitable components from the actual laboratory inventory.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <form
+        method="post"
+        action="{{ url_for('assistant') }}"
+        class="ai-form"
+    >
+
+        <input
+            type="hidden"
+            name="csrf"
+            value="{{ csrf_token }}"
+        >
+
+
+        <input
+            name="title"
+            required
+            placeholder="Project title"
+        >
+
+
+        <input
+            name="purpose"
+            required
+            placeholder="What are you trying to build?"
+        >
+
+
+        <button
+            class="button"
+            type="submit"
+        >
+            Find components
+            <span>→</span>
+        </button>
+
+    </form>
+
+</section>
+
+
+</div>
+
 {% endblock %}

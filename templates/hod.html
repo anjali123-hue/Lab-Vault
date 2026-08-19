@@ -1,0 +1,823 @@
+{% extends "base.html" %}
+
+{% block title %}HOD workspace{% endblock %}
+
+{% block content %}
+
+<div class="page-wrap">
+
+<section class="page-heading">
+
+    <div>
+
+        <div class="eyebrow">
+            HOD WORKSPACE
+        </div>
+
+        <h1>
+    Welcome, {{ hod['full_name'] }}
+</h1>
+
+        <p>
+            Faculty management, mentor verification and HOD approvals.
+        </p>
+
+    </div>
+
+    <div class="heading-actions">
+
+        <a
+            class="button ghost"
+            href="{{ url_for('hod_change_password') }}"
+        >
+            Change my password
+        </a>
+
+        <a
+            class="button ghost"
+            href="{{ url_for('hod_change_admin_password') }}"
+        >
+            Change Lab Assistant password
+        </a>
+
+    </div>
+
+</section>
+
+
+<section class="metrics-grid">
+
+    <div class="metric-card">
+
+        <span class="stat-icon blue">
+            ◷
+        </span>
+
+        <div>
+
+            <small>
+                HOD approvals
+            </small>
+
+            <strong>
+                {{ pending_hod|length }}
+            </strong>
+
+        </div>
+
+    </div>
+
+
+    <div class="metric-card">
+
+        <span class="stat-icon orange">
+            !
+        </span>
+
+        <div>
+
+            <small>
+                External mentors
+            </small>
+
+            <strong>
+                {{ external_pending|length }}
+            </strong>
+
+        </div>
+
+    </div>
+
+
+    <div class="metric-card">
+
+        <span class="stat-icon green">
+            ✓
+        </span>
+
+        <div>
+
+            <small>
+                Active faculty
+            </small>
+
+            <strong>
+                {{ faculty|selectattr('active')|list|length }}
+            </strong>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+<div class="admin-grid">
+
+
+<section class="panel">
+
+    <div class="panel-head">
+
+        <div>
+
+            <div class="eyebrow">
+                EXTERNAL MENTOR VERIFICATION
+            </div>
+
+            <h2>
+                Mentors outside IoT faculty
+            </h2>
+
+            <p class="panel-subtitle">
+                Verify these mentor details before the request receives final HOD approval.
+            </p>
+
+        </div>
+
+        <span class="muted">
+            {{ external_pending|length }} waiting
+        </span>
+
+    </div>
+
+
+    <div class="pending-list">
+
+        {% for req in external_pending %}
+
+        <div class="pending-card">
+
+            <div class="pending-card-head">
+
+                <div class="pending-card-title">
+
+                    <strong>
+                        {{ req['request_code'] }}
+                    </strong>
+
+                    <span class="pending-meta">
+                        {{ req['student_name'] }}
+                        ({{ req['uid'] }})
+                        ·
+                        {{ req['project_title'] }}
+                    </span>
+
+                </div>
+
+                <span class="status-pill pending">
+                    External mentor verification
+                </span>
+
+            </div>
+
+
+            <div
+                style="
+                    margin-top:14px;
+                    padding:14px;
+                    border-radius:12px;
+                    background:var(--surface-2);
+                    border:1px solid var(--line);
+                "
+            >
+
+                <strong>
+                    {{ req['mentor_name'] }}
+                </strong>
+
+                <small
+                    style="
+                        display:block;
+                        color:var(--muted);
+                        margin-top:5px;
+                    "
+                >
+                    {{ req['mentor_email'] }}
+                </small>
+
+                {% if req['mentor_phone'] %}
+
+                <small
+                    style="
+                        display:block;
+                        color:var(--muted);
+                        margin-top:3px;
+                    "
+                >
+                    {{ req['mentor_phone'] }}
+                </small>
+
+                {% endif %}
+
+            </div>
+
+
+            <form
+                method="post"
+                action="{{ url_for('hod_verify_external_mentor', request_id=req['id']) }}"
+                class="pending-actions"
+                style="margin-top:14px;"
+            >
+
+                <input
+                    type="hidden"
+                    name="csrf"
+                    value="{{ csrf_token }}"
+                >
+
+                <input
+                    class="mini-input reason-input"
+                    name="reason"
+                    placeholder="Reason if rejecting"
+                >
+
+                <button
+                    class="button ghost small"
+                    name="decision"
+                    value="reject"
+                    type="submit"
+                >
+                    Reject
+                </button>
+
+                <button
+                    class="button small"
+                    name="decision"
+                    value="verify"
+                    type="submit"
+                >
+                    Verify mentor
+                    <span>→</span>
+                </button>
+
+            </form>
+
+        </div>
+
+        {% else %}
+
+        <div class="empty-small">
+
+            <strong>
+                No external mentors waiting.
+            </strong>
+
+            <span>
+                External mentors submitted by students will appear here.
+            </span>
+
+        </div>
+
+        {% endfor %}
+
+    </div>
+
+</section>
+
+
+<section class="panel">
+
+    <div class="panel-head">
+
+        <div>
+
+            <div class="eyebrow">
+                HOD APPROVALS
+            </div>
+
+            <h2>
+                Requests waiting for you
+            </h2>
+
+        </div>
+
+        <span class="muted">
+            {{ pending_hod|length }} waiting
+        </span>
+
+    </div>
+
+
+    <div class="pending-list">
+
+        {% for req in pending_hod %}
+
+        <div class="pending-card">
+
+            <div class="pending-card-head">
+
+                <div class="pending-card-title">
+
+                    <strong>
+                        {{ req['request_code'] }}
+                    </strong>
+
+                    <span class="pending-meta">
+                        {{ req['student_name'] }}
+                        ·
+                        {{ req['project_title'] }}
+                    </span>
+
+                </div>
+
+                <span class="status-pill pending">
+                    Pending HOD approval
+                </span>
+
+            </div>
+
+
+            {% if req['mentor_type'] == 'external' and not req['mentor_verified'] %}
+
+            <div
+                class="extend-note"
+                style="margin-top:12px;"
+            >
+
+                <strong>
+                    External mentor still needs verification.
+                </strong>
+
+                <small>
+                    Verify the mentor above before approving this request.
+                </small>
+
+            </div>
+
+            {% else %}
+
+            <div
+                style="
+                    margin-top:12px;
+                    padding:12px;
+                    border-radius:10px;
+                    background:var(--surface-2);
+                "
+            >
+
+                <strong>
+                    Mentor
+                </strong>
+
+                <small
+                    style="
+                        display:block;
+                        color:var(--muted);
+                        margin-top:4px;
+                    "
+                >
+                    {{ req['mentor_name'] }}
+                    ·
+                    {{ req['mentor_email'] }}
+                </small>
+
+            </div>
+
+            <a
+                class="button small"
+                style="margin-top:12px;"
+                href="{{ url_for('hod_request_review', request_id=req['id']) }}"
+            >
+                Review request
+                <span>→</span>
+            </a>
+
+            {% endif %}
+
+        </div>
+
+        {% else %}
+
+        <div class="empty-small">
+
+            <strong>
+                Nothing waiting for HOD approval.
+            </strong>
+
+            <span>
+                Approved Mentor requests will appear here.
+            </span>
+
+        </div>
+
+        {% endfor %}
+
+    </div>
+
+</section>
+
+</div>
+
+
+<section
+    class="panel"
+    id="faculty"
+>
+
+    <div class="panel-head">
+
+        <div>
+
+            <div class="eyebrow">
+                FACULTY MANAGEMENT
+            </div>
+
+            <h2>
+                IoT faculty members
+            </h2>
+
+            <p class="panel-subtitle">
+                Add, update or deactivate faculty without changing the application code.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <form
+        method="post"
+        action="{{ url_for('hod_add_faculty') }}"
+        class="form-grid"
+    >
+
+        <input
+            type="hidden"
+            name="csrf"
+            value="{{ csrf_token }}"
+        >
+
+
+        <label>
+
+            Full name
+
+            <input
+                required
+                name="full_name"
+            >
+
+        </label>
+
+
+        <label>
+
+            Designation
+
+            <input
+                name="designation"
+            >
+
+        </label>
+
+
+        <label>
+
+            Official email
+
+            <input
+                required
+                type="email"
+                name="email"
+            >
+
+        </label>
+
+
+        <div
+            style="
+                grid-column:1/-1;
+            "
+        >
+
+            <button
+                class="button small"
+                type="submit"
+            >
+                + Add faculty
+            </button>
+
+        </div>
+
+    </form>
+
+
+    <div
+        class="table-wrap"
+        style="margin-top:20px;"
+    >
+
+        <table>
+
+            <thead>
+
+                <tr>
+
+                    <th>
+                        Faculty
+                    </th>
+
+                    <th>
+                        Designation
+                    </th>
+
+                    <th>
+                        Email
+                    </th>
+
+                    <th>
+                        Status
+                    </th>
+
+                    <th>
+                        Actions
+                    </th>
+
+                </tr>
+
+            </thead>
+
+
+            <tbody>
+
+                {% for member in faculty %}
+
+                <tr>
+
+                    <td>
+
+                        <strong>
+                            {{ member['full_name'] }}
+                        </strong>
+
+                    </td>
+
+
+                    <td>
+                        {{ member['designation'] or '—' }}
+                    </td>
+
+
+                    <td>
+                        {{ member['email'] }}
+                    </td>
+
+
+                    <td>
+
+                        <span
+                            class="status-pill {{ 'approved' if member['active'] else 'rejected' }}"
+                        >
+                            {{ 'Active' if member['active'] else 'Inactive' }}
+                        </span>
+
+                    </td>
+
+
+                    <td>
+
+                        <div
+                            style="
+                                display:flex;
+                                gap:8px;
+                                flex-wrap:wrap;
+                                align-items:center;
+                            "
+                        >
+
+                            <details>
+
+                                <summary
+                                    class="button ghost small"
+                                    style="
+                                        list-style:none;
+                                        cursor:pointer;
+                                    "
+                                >
+                                    Edit
+                                </summary>
+
+                                <div
+                                    class="panel"
+                                    style="
+                                        position:absolute;
+                                        z-index:20;
+                                        width:340px;
+                                        margin-top:8px;
+                                    "
+                                >
+
+                                    <form
+                                        method="post"
+                                        action="{{ url_for('hod_edit_faculty', faculty_id=member['id']) }}"
+                                        class="form-stack"
+                                    >
+
+                                        <input
+                                            type="hidden"
+                                            name="csrf"
+                                            value="{{ csrf_token }}"
+                                        >
+
+
+                                        <label>
+
+                                            Full name
+
+                                            <input
+                                                required
+                                                name="full_name"
+                                                value="{{ member['full_name'] }}"
+                                            >
+
+                                        </label>
+
+
+                                        <label>
+
+                                            Designation
+
+                                            <input
+                                                name="designation"
+                                                value="{{ member['designation'] or '' }}"
+                                            >
+
+                                        </label>
+
+
+                                        <label>
+
+                                            Official email
+
+                                            <input
+                                                required
+                                                type="email"
+                                                name="email"
+                                                value="{{ member['email'] }}"
+                                            >
+
+                                        </label>
+
+
+                                        <button
+                                            class="button small"
+                                            type="submit"
+                                        >
+                                            Save changes
+                                            <span>→</span>
+                                        </button>
+
+                                    </form>
+
+                                </div>
+
+                            </details>
+
+
+                            <form
+                                method="post"
+                                action="{{ url_for('hod_toggle_faculty', faculty_id=member['id']) }}"
+                                class="inline-form"
+                            >
+
+                                <input
+                                    type="hidden"
+                                    name="csrf"
+                                    value="{{ csrf_token }}"
+                                >
+
+                                <button
+                                    class="button ghost small"
+                                    type="submit"
+                                >
+                                    {{
+                                        'Deactivate'
+                                        if member['active']
+                                        else 'Reactivate'
+                                    }}
+                                </button>
+
+                            </form>
+
+                        </div>
+
+                    </td>
+
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</section>
+
+
+<section class="panel">
+
+    <div class="panel-head">
+
+        <div>
+
+            <div class="eyebrow">
+                RECENT ACTIVITY
+            </div>
+
+            <h2>
+                Request history
+            </h2>
+
+        </div>
+
+    </div>
+
+
+    <div class="table-wrap">
+
+        <table>
+
+            <thead>
+
+                <tr>
+
+                    <th>
+                        Request
+                    </th>
+
+                    <th>
+                        Student
+                    </th>
+
+                    <th>
+                        Project
+                    </th>
+
+                    <th>
+                        Mentor
+                    </th>
+
+                    <th>
+                        Status
+                    </th>
+
+                </tr>
+
+            </thead>
+
+
+            <tbody>
+
+                {% for req in recent_requests %}
+
+                <tr>
+
+                    <td>
+
+                        <strong>
+                            {{ req['request_code'] }}
+                        </strong>
+
+                    </td>
+
+                    <td>
+                        {{ req['student_name'] }}
+                    </td>
+
+                    <td>
+                        {{ req['project_title'] }}
+                    </td>
+
+                    <td>
+                        {{ req['mentor_name'] }}
+                    </td>
+
+                    <td>
+
+                        <span
+                            class="status-pill {{ req['overall_status']|lower }}"
+                        >
+                            {{ req['overall_status']|replace('_',' ')|title }}
+                        </span>
+
+                    </td>
+
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</section>
+
+
+</div>
+
+{% endblock %}

@@ -1,5 +1,2955 @@
 {% extends "base.html" %}
+
 {% block title %}Lab assistant overview{% endblock %}
+
 {% block content %}
-<div class="page-wrap"><section class="page-heading"><div><div class="eyebrow">LAB ASSISTANT WORKSPACE</div><h1>Keep the lab moving.</h1><p>Inventory health, requests, and collections at a glance.</p></div><div class="heading-actions"><a class="button ghost" href="{{ url_for('returns') }}">↩ Process returns</a><a class="button" href="#inventory">Manage inventory <span>→</span></a></div></section><section class="metrics-grid">{% for key,label,icon,color in [('items','Catalogued items','▦','blue'),('units','Available units','⌁','green'),('issued','Active issues','◈','purple'),('low','Low stock','!','orange'),('pending','Pending requests','◷','blue'),('overdue','Overdue returns','⚠','red')] %}<div class="metric-card"><span class="stat-icon {{ color }}">{{ icon }}</span><div><small>{{ label }}</small><strong>{{ metrics[key] }}</strong></div></div>{% endfor %}</section><div class="admin-grid"><section class="panel" id="requests"><div class="panel-head"><div><div class="eyebrow">REQUEST PIPELINE</div><h2>Recent requests</h2></div><span class="muted">Live</span></div><div class="table-wrap"><table><thead><tr><th>Request</th><th>Student</th><th>Project</th><th>Due</th><th>Status</th></tr></thead><tbody>{% for req in recent %}<tr><td><strong>{{ req['request_code'] }}</strong><small>{{ req['created_at'][:10] }}</small></td><td>{{ req['student_name'] }}</td><td>{{ req['project_title'] }}</td><td>{{ req['due_date'] }}</td><td><span class="status-pill {{ req['overall_status']|lower }}">{{ req['overall_status']|replace('_',' ')|title }}</span></td></tr>{% else %}<tr><td colspan="5" class="table-empty">No requests yet.</td></tr>{% endfor %}</tbody></table></div></section><section class="panel collection-card"><div class="eyebrow">COLLECTION DESK</div><h2>Issue approved components</h2><p>Verify the request ID and the student’s one-time collection OTP.</p><form method="post" class="form-stack"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="action" value="issue"><label>Request ID<input required name="request_code" placeholder="REQ-2026-000001"></label><label>Collection OTP<input required name="otp" inputmode="numeric" maxlength="6" placeholder="6 digit code"></label><button class="button full">Verify & issue <span>→</span></button></form><a class="text-link" href="{{ url_for('returns') }}">Need to process a return? →</a></section></div><section class="panel inventory-admin" id="inventory"><div class="panel-head"><div><div class="eyebrow">SOURCE INVENTORY</div><h2>Manage components</h2><p class="panel-subtitle">Imported from your master stock and consumables workbooks.</p></div><button class="button small" data-modal-open="add-item">+ Add item</button></div><div class="table-wrap"><table><thead><tr><th>Component</th><th>Category</th><th>Location</th><th>Stock</th><th>Health</th><th></th></tr></thead><tbody>{% for item in inventory %}<tr><td><strong>{{ item['name'] }}</strong><small>{{ item['stock_number'] or item['source_file'] }}</small></td><td>{{ item['category'] }}</td><td>{{ item['location'] }}</td><td><strong>{{ item['available_qty'] }}</strong> / {{ item['total_qty'] }}</td><td><span class="status-pill {{ 'low' if item['available_qty']<=item['minimum_stock'] else 'approved' }}">{{ 'Low stock' if item['available_qty']<=item['minimum_stock'] else 'Healthy' }}</span></td><td><form method="post" action="{{ url_for('toggle_inventory', item_id=item['id']) }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="icon-button" title="Deactivate item">⋯</button></form></td></tr>{% endfor %}</tbody></table></div></section></div><div class="modal" id="add-item"><div class="modal-card"><button class="modal-close" data-modal-close>×</button><div class="eyebrow">NEW CATALOG ITEM</div><h2>Add inventory item</h2><form method="post" class="form-stack"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="action" value="add_inventory"><label>Component name<input required name="name"></label><div class="form-grid"><label>Category<input name="category" value="Other"></label><label>Location<input name="location" value="Main Lab"></label><label>Quantity<input type="number" min="0" name="quantity" value="1"></label><label>Minimum stock<input type="number" min="1" name="minimum" value="1"></label></div><button class="button full">Add to inventory <span>→</span></button></form></div></div>
+
+<div class="page-wrap">
+
+<section class="page-heading">
+
+
+<div>
+    <div class="eyebrow">LAB ASSISTANT WORKSPACE</div>
+    <h1>Keep the lab moving.</h1>
+    <p>Inventory health, requests, and collections at a glance.</p>
+</div>
+
+<div class="heading-actions">
+
+    <a
+        class="button ghost"
+        href="{{ url_for('admin_change_password') }}"
+    >
+        Contact HOD for Password Change
+    </a>
+
+    <a
+        class="button ghost"
+        href="{{ url_for('returns') }}"
+    >
+        ↩ Process returns
+    </a>
+
+    <a
+        class="button"
+        href="#inventory"
+    >
+        Manage inventory <span>→</span>
+    </a>
+
+</div>
+
+
+</section>
+
+<section class="metrics-grid">
+
+
+{% for key,label,icon,color in [
+    ('items','Catalogued items','▦','blue'),
+    ('units','Available units','⌁','green'),
+    ('issued','Active issues','◈','purple'),
+    ('low','Low stock','!','orange'),
+    ('pending_admin','Awaiting your approval','◷','red'),
+    ('overdue','Overdue returns','⚠','red')
+] %}
+
+<div class="metric-card">
+
+    <span class="stat-icon {{ color }}">
+        {{ icon }}
+    </span>
+
+    <div>
+        <small>{{ label }}</small>
+        <strong>{{ metrics[key] }}</strong>
+    </div>
+
+</div>
+
+{% endfor %}
+
+
+</section>
+
+<!-- =========================================================
+     HISTORICAL USAGE ANALYTICS
+     ========================================================= -->
+
+<section class="panel historical-panel" id="historical-analytics">
+
+<div class="panel-head">
+
+    <div>
+
+        <div class="eyebrow">
+            HISTORICAL USAGE
+        </div>
+
+        <h2>
+            Lab usage analytics
+        </h2>
+
+        <p class="panel-subtitle">
+            Analysis of historical component issue records imported
+            from previous laboratory records.
+        </p>
+
+    </div>
+
+    <span class="muted">
+        Historical records
+    </span>
+
+</div>
+
+
+<!-- ANALYTICS SUMMARY -->
+
+<div class="historical-metrics">
+
+    <div class="historical-card">
+
+        <span class="historical-icon blue">
+            ◷
+        </span>
+
+        <div>
+
+            <small>Total issue records</small>
+
+            <strong>
+                {{ historical_summary['total_records'] or 0 }}
+            </strong>
+
+            <span>
+                historical transactions
+            </span>
+
+        </div>
+
+    </div>
+
+
+    <div class="historical-card">
+
+        <span class="historical-icon purple">
+            ◈
+        </span>
+
+        <div>
+
+            <small>Total quantity issued</small>
+
+            <strong>
+                {{ historical_summary['total_quantity'] or 0 }}
+            </strong>
+
+            <span>
+                units issued
+            </span>
+
+        </div>
+
+    </div>
+
+
+    <div class="historical-card">
+
+        <span class="historical-icon green">
+            ▦
+        </span>
+
+        <div>
+
+            <small>Components used</small>
+
+            <strong>
+                {{ historical_summary['unique_components'] or 0 }}
+            </strong>
+
+            <span>
+                unique components
+            </span>
+
+        </div>
+
+    </div>
+
+
+    <div class="historical-card">
+
+        <span class="historical-icon orange">
+            ◉
+        </span>
+
+        <div>
+
+            <small>Students recorded</small>
+
+            <strong>
+                {{ historical_summary['unique_students'] or 0 }}
+            </strong>
+
+            <span>
+                students
+            </span>
+
+        </div>
+
+    </div>
+
+
+    <div class="historical-card">
+
+        <span class="historical-icon green">
+            ✓
+        </span>
+
+        <div>
+
+            <small>Return rate</small>
+
+            <strong>
+                {{ historical_return_percentage }}%
+            </strong>
+
+            <span>
+                returned records
+            </span>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =====================================================
+     ANALYTICS CHARTS
+     ===================================================== -->
+
+<div
+    style="
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        gap:20px;
+        margin-top:24px;
+        margin-bottom:24px;
+    "
+>
+
+    <!-- MOST USED COMPONENTS -->
+
+    <div
+        class="historical-box"
+        style="padding:20px;"
+    >
+
+        <div class="historical-box-head">
+
+            <div>
+
+                <div class="eyebrow">
+                    COMPONENT DEMAND
+                </div>
+
+                <h3>
+                    Most used components
+                </h3>
+
+                <p class="panel-subtitle">
+                    Equivalent component names are combined.
+                </p>
+
+            </div>
+
+        </div>
+
+        <div style="height:320px;">
+            <canvas id="historicalComponentChart"></canvas>
+        </div>
+
+    </div>
+
+
+    <!-- YEAR-WISE USAGE -->
+
+    <div
+        class="historical-box"
+        style="padding:20px;"
+    >
+
+        <div class="historical-box-head">
+
+            <div>
+
+                <div class="eyebrow">
+                    YEAR-WISE USAGE
+                </div>
+
+                <h3>
+                    Usage by academic year
+                </h3>
+
+            </div>
+
+        </div>
+
+        <div style="height:320px;">
+            <canvas id="historicalYearChart"></canvas>
+        </div>
+
+    </div>
+
+
+    <!-- DEPARTMENT DEMAND -->
+
+    <div
+        class="historical-box"
+        style="padding:20px;"
+    >
+
+        <div class="historical-box-head">
+
+            <div>
+
+                <div class="eyebrow">
+                    DEPARTMENT DEMAND
+                </div>
+
+                <h3>
+                    Usage by department
+                </h3>
+
+            </div>
+
+        </div>
+
+        <div style="height:320px;">
+            <canvas id="historicalDepartmentChart"></canvas>
+        </div>
+
+    </div>
+
+
+    <!-- PROJECT DEMAND -->
+
+    <div
+        class="historical-box"
+        style="padding:20px;"
+    >
+
+        <div class="historical-box-head">
+
+            <div>
+
+                <div class="eyebrow">
+                    PROJECT DEMAND
+                </div>
+
+                <h3>
+                    Projects using the lab
+                </h3>
+
+            </div>
+
+        </div>
+
+        <div style="height:320px;">
+            <canvas id="historicalProjectChart"></canvas>
+        </div>
+
+    </div>
+
+
+    <!-- CATEGORY DEMAND -->
+
+    <div
+        class="historical-box"
+        style="
+            padding:20px;
+            grid-column:1/-1;
+        "
+    >
+
+        <div class="historical-box-head">
+
+            <div>
+
+                <div class="eyebrow">
+                    CATEGORY DEMAND
+                </div>
+
+                <h3>
+                    Equipment category usage
+                </h3>
+
+                <p class="panel-subtitle">
+                    Historical components grouped using the laboratory inventory categories.
+                </p>
+
+            </div>
+
+        </div>
+
+        <div style="height:340px;">
+            <canvas id="historicalCategoryChart"></canvas>
+        </div>
+
+    </div>
+
+</div>
+
+</section>
+
+<div class="admin-grid">
+
+<!-- =========================================================
+     NORMAL REQUEST APPROVAL
+     ========================================================= -->
+
+<section class="panel" id="pending-approval">
+
+<div class="panel-head">
+
+    <div>
+
+        <div class="eyebrow">
+            YOUR APPROVAL FIRST
+        </div>
+
+        <h2>
+            Requests waiting on you
+        </h2>
+
+    </div>
+
+    <span class="muted">
+        {{ pending_admin_requests|length }} waiting
+    </span>
+
+</div>
+
+
+<div class="pending-list">
+
+    {% for req in pending_admin_requests %}
+
+    <div class="pending-card">
+
+        <div class="pending-card-head">
+
+            <div class="pending-card-title">
+
+                <strong>
+                    {{ req['request_code'] }}
+                </strong>
+
+                <span class="pending-meta">
+                    {{ req['student_name'] }}
+                    ({{ req['uid'] }})
+                    · {{ req['project_title'] }}
+                </span>
+
+            </div>
+
+            <div
+                style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"
+            >
+
+                <button
+                    type="button"
+                    class="button ghost small"
+                    onclick="openStudentPrivacyModal(
+                        {{ req['student_id'] }},
+                        '{{ req['student_name']|e }}'
+                    )"
+                >
+                    View contact
+                </button>
+
+                <span class="status-pill pending">
+                    Pending your approval
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <div class="pending-items">
+
+            {% for item in pending_admin_items[req['id']] %}
+
+            <span class="pending-chip">
+
+                {{ item['name'] }}
+
+                <b>
+                    × {{ item['quantity'] }}
+                </b>
+
+            </span>
+
+            {% endfor %}
+
+        </div>
+
+
+        <form
+            method="post"
+            action="{{ url_for('admin_decide_request', request_id=req['id']) }}"
+            class="pending-actions"
+        >
+
+            <input
+                type="hidden"
+                name="csrf"
+                value="{{ csrf_token }}"
+            >
+
+            <input
+                class="mini-input reason-input"
+                name="reason"
+                placeholder="Reason if rejecting"
+            >
+
+            <button
+                class="button ghost small"
+                name="decision"
+                value="reject"
+                type="submit"
+            >
+                Reject
+            </button>
+
+            <button
+                class="button small"
+                name="decision"
+                value="approve"
+                type="submit"
+            >
+                Approve <span>→</span>
+            </button>
+
+        </form>
+
+    </div>
+
+    {% else %}
+
+    <div class="empty-small">
+
+        <strong>
+            Nothing waiting on you.
+        </strong>
+
+        <span>
+            New student requests will show up here first.
+        </span>
+
+    </div>
+
+    {% endfor %}
+
+</div>
+
+</section>
+
+<!-- =========================================================
+     EXTENSION APPROVALS
+     ========================================================= -->
+
+<section class="panel" id="extension-approval">
+
+<div class="panel-head">
+
+    <div>
+
+        <div class="eyebrow">
+            EXTENSION APPROVALS
+        </div>
+
+        <h2>
+            Extension requests
+        </h2>
+
+        <p class="panel-subtitle">
+            Review student extension requests before sending them to the Mentor.
+        </p>
+
+    </div>
+
+    <span class="muted">
+        {{ pending_extension_requests|length }} waiting
+    </span>
+
+</div>
+
+
+<div class="pending-list">
+
+    {% for issue in pending_extension_requests %}
+
+    <div class="pending-card">
+
+        <div class="pending-card-head">
+
+            <div class="pending-card-title">
+
+                <strong>
+                    {{ issue['request_code'] }}
+                </strong>
+
+                <span class="pending-meta">
+                    {{ issue['student_name'] }}
+                    ({{ issue['uid'] }})
+                    · {{ issue['project_title'] }}
+                </span>
+
+            </div>
+
+            <div
+                style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"
+            >
+
+                <button
+                    type="button"
+                    class="button ghost small"
+                    onclick="openStudentPrivacyModal(
+                        {{ issue['student_id'] }},
+                        '{{ issue['student_name']|e }}'
+                    )"
+                >
+                    View contact
+                </button>
+
+                <span class="status-pill pending">
+                    Pending Admin Approval
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <div style="margin-top:12px;">
+
+            <div
+                style="
+                    font-size:13px;
+                    color:var(--muted);
+                    margin-bottom:6px;
+                "
+            >
+
+                <strong>
+                    Requested extension:
+                </strong>
+
+                +{{ issue['extension_requested_days'] }} day(s)
+
+            </div>
+
+
+            <div
+                style="
+                    font-size:13px;
+                    color:var(--muted);
+                    margin-bottom:6px;
+                "
+            >
+
+                <strong>
+                    Current due date:
+                </strong>
+
+                {{ issue['due_date'] }}
+
+            </div>
+
+
+            <div
+                style="
+                    margin-top:10px;
+                    padding:12px 14px;
+                    border-radius:10px;
+                    background:var(--surface-2);
+                    border:1px solid var(--border);
+                    font-size:13px;
+                    line-height:1.5;
+                "
+            >
+
+                <strong>
+                    Student's reason:
+                </strong>
+
+                <br>
+
+                {{ issue['extension_reason'] }}
+
+            </div>
+
+        </div>
+
+
+        <div class="pending-items">
+
+            {% for item in pending_extension_items[issue['id']] %}
+
+            <span class="pending-chip">
+
+                {{ item['name'] }}
+
+                <b>
+                    × {{ item['quantity'] }}
+                </b>
+
+            </span>
+
+            {% endfor %}
+
+        </div>
+
+
+        <form
+            method="post"
+            action="{{ url_for('admin_decide_extension', issue_id=issue['id']) }}"
+            class="pending-actions"
+        >
+
+            <input
+                type="hidden"
+                name="csrf"
+                value="{{ csrf_token }}"
+            >
+
+            <button
+                class="button ghost small"
+                type="submit"
+                name="decision"
+                value="reject"
+            >
+                Reject
+            </button>
+
+            <button
+                class="button small"
+                type="submit"
+                name="decision"
+                value="approve"
+            >
+                Approve &amp; Send to Mentor
+                <span>→</span>
+            </button>
+
+        </form>
+
+    </div>
+
+
+    {% else %}
+
+    <div class="empty-small">
+
+        <strong>
+            No extension requests waiting.
+        </strong>
+
+        <span>
+            Student extension requests will appear here when submitted.
+        </span>
+
+    </div>
+
+    {% endfor %}
+
+</div>
+
+</section>
+
+<!-- =========================================================
+     RECENT REQUESTS
+     ========================================================= -->
+
+<section class="panel" id="requests">
+
+<div class="panel-head">
+
+    <div>
+
+        <div class="eyebrow">
+            REQUEST PIPELINE
+        </div>
+
+        <h2>
+           {{ 'All requests' if show_all_requests else 'Recent requests' }}
+        </h2>
+
+    </div>
+
+   {% if show_all_requests %}
+
+<a
+    href="{{ url_for('admin_dashboard') }}#requests"
+    class="text-link"
+>
+    View recent
+</a>
+
+{% else %}
+
+<a
+    href="{{ url_for('admin_dashboard', all=1) }}#requests"
+    class="text-link"
+>
+    View all
+</a>
+
+{% endif %}
+
+</div>
+
+
+<div class="table-wrap">
+
+    <table>
+
+        <thead>
+
+            <tr>
+                <th>Request</th>
+                <th>Student</th>
+                <th>Project</th>
+                <th>Due</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+
+        </thead>
+
+
+        <tbody>
+
+            {% for req in recent %}
+
+            <tr>
+
+                <td>
+
+                    <strong>
+                        {{ req['request_code'] }}
+                    </strong>
+
+                    <small>
+                        {{ req['created_at'][:10] }}
+                    </small>
+
+                </td>
+
+
+                <td>
+
+                    <strong>
+                        {{ req['student_name'] }}
+                    </strong>
+
+                    <small>
+                        {{ req['uid'] or 'UID not available' }}
+                    </small>
+
+                </td>
+
+
+                <td>
+                    {{ req['project_title'] }}
+                </td>
+
+
+                <td>
+                    {{ req['due_date'] }}
+                </td>
+
+
+                <td>
+
+                    <span class="status-pill {{ req['overall_status']|lower }}">
+                        {{ req['overall_status']|replace('_',' ')|title }}
+                    </span>
+
+                </td>
+
+
+                <td>
+
+                    <button
+                        type="button"
+                        class="button ghost small"
+                        onclick="openRequestDetailsModal(
+                            {{ req['id'] }},
+                            '{{ req['request_code']|e }}'
+                        )"
+                    >
+                        View details
+                    </button>
+
+                </td>
+
+            </tr>
+
+
+            {% else %}
+
+            <tr>
+
+                <td
+                    colspan="6"
+                    class="table-empty"
+                >
+                    No requests yet.
+                </td>
+
+            </tr>
+
+            {% endfor %}
+
+        </tbody>
+
+    </table>
+
+</div>
+
+</section>
+
+<!-- =========================================================
+     COLLECTION DESK
+     ========================================================= -->
+
+<section class="panel collection-card">
+
+<div class="eyebrow">
+    COLLECTION DESK
+</div>
+
+<h2>
+    Issue approved components
+</h2>
+
+<p>
+    Verify the request ID and the student's one-time collection OTP.
+</p>
+
+
+<form
+    method="post"
+    class="form-stack"
+>
+
+    <input
+        type="hidden"
+        name="csrf"
+        value="{{ csrf_token }}"
+    >
+
+    <input
+        type="hidden"
+        name="action"
+        value="issue"
+    >
+
+
+    <label>
+
+        Request ID
+
+        <input
+            required
+            name="request_code"
+            placeholder="REQ-2026-000001"
+        >
+
+    </label>
+
+
+    <label>
+
+        Collection OTP
+
+        <input
+            required
+            name="otp"
+            inputmode="numeric"
+            maxlength="6"
+            placeholder="6 digit code"
+        >
+
+    </label>
+
+
+    <button class="button full">
+
+        Verify &amp; issue
+
+        <span>→</span>
+
+    </button>
+
+</form>
+
+
+<a
+    class="text-link"
+    href="{{ url_for('returns') }}"
+>
+    Need to process a return? →
+</a>
+
+</section>
+
+</div>
+
+<!-- =========================================================
+     INVENTORY
+     ========================================================= -->
+
+<section
+    class="panel inventory-admin"
+    id="inventory"
+>
+
+<div class="panel-head">
+
+    <div>
+
+        <div class="eyebrow">
+            SOURCE INVENTORY
+        </div>
+
+        <h2>
+            Manage components
+        </h2>
+
+        <p class="panel-subtitle">
+            Imported from your master stock and consumables workbooks.
+        </p>
+
+    </div>
+
+
+    <div class="inventory-tools">
+
+        <a
+            class="button ghost small"
+            href="{{ url_for('export_master_stock') }}"
+        >
+            Export Master Stock
+        </a>
+
+        <a
+            class="button ghost small"
+            href="{{ url_for('export_consumables') }}"
+        >
+            Export Consumables
+        </a>
+
+        <a
+            class="button ghost small"
+            href="{{ url_for('export_full_inventory') }}"
+        >
+            Export Full Inventory ↓
+        </a>
+
+        <a
+            class="button ghost small"
+            href="{{ url_for('print_inventory_report') }}"
+            target="_blank"
+        >
+            🖨 Print Inventory
+        </a>
+
+        <button
+            class="button small"
+            data-modal-open="add-item"
+            type="button"
+        >
+            + Add item
+        </button>
+
+    </div>
+
+</div>
+
+
+<div class="table-wrap">
+
+    <table>
+
+        <thead>
+
+            <tr>
+                <th>Component</th>
+                <th>Category</th>
+                <th>Location</th>
+                <th>Stock</th>
+                <th>Health</th>
+                <th></th>
+            </tr>
+
+        </thead>
+
+
+        <tbody>
+
+            {% for item in inventory %}
+
+            <tr>
+
+                <form
+                    id="edit-{{ item['id'] }}"
+                    method="post"
+                    action="{{ url_for('edit_inventory', item_id=item['id']) }}"
+                >
+
+                    <input
+                        type="hidden"
+                        name="csrf"
+                        value="{{ csrf_token }}"
+                    >
+
+                </form>
+
+
+                <td>
+
+                    <strong>
+                        {{ item['name'] }}
+                    </strong>
+
+                    <small>
+                        {{ item['stock_number'] or item['source_file'] }}
+                    </small>
+
+                </td>
+
+
+                <td>
+
+                    <input
+                        class="mini-input"
+                        name="category"
+                        value="{{ item['category'] }}"
+                        form="edit-{{ item['id'] }}"
+                    >
+
+                </td>
+
+
+                <td>
+
+                    <input
+                        class="mini-input"
+                        name="location"
+                        value="{{ item['location'] or '' }}"
+                        form="edit-{{ item['id'] }}"
+                    >
+
+                </td>
+
+
+                <td>
+
+                    <input
+                        class="mini-input qty"
+                        type="number"
+                        min="0"
+                        name="available_qty"
+                        value="{{ item['available_qty'] }}"
+                        form="edit-{{ item['id'] }}"
+                    >
+
+                    /
+
+                    <input
+                        class="mini-input qty"
+                        type="number"
+                        min="0"
+                        name="total_qty"
+                        value="{{ item['total_qty'] }}"
+                        form="edit-{{ item['id'] }}"
+                    >
+
+                </td>
+
+
+                <td>
+
+                    <span
+                        class="status-pill {{ 'low' if item['available_qty'] <= item['minimum_stock'] else 'approved' }}"
+                    >
+
+                        {{
+                            'Low stock'
+                            if item['available_qty'] <= item['minimum_stock']
+                            else 'Healthy'
+                        }}
+
+                    </span>
+
+                </td>
+
+
+                <td class="row-actions">
+
+                    <button
+                        class="icon-button"
+                        type="submit"
+                        form="edit-{{ item['id'] }}"
+                        title="Save changes"
+                    >
+                        ✓
+                    </button>
+
+
+                    <form
+                        method="post"
+                        action="{{ url_for('toggle_inventory', item_id=item['id']) }}"
+                        class="inline-form"
+                    >
+
+                        <input
+                            type="hidden"
+                            name="csrf"
+                            value="{{ csrf_token }}"
+                        >
+
+                        <button
+                            class="icon-button"
+                            title="{{ 'Deactivate' if item['active'] else 'Reactivate' }} item"
+                        >
+                            {{ '⏸' if item['active'] else '▶' }}
+                        </button>
+
+                    </form>
+
+
+                    <form
+                        method="post"
+                        action="{{ url_for('delete_inventory', item_id=item['id']) }}"
+                        class="inline-form"
+                        onsubmit="return confirm('Delete this item? This cannot be undone if it has no request history.');"
+                    >
+
+                        <input
+                            type="hidden"
+                            name="csrf"
+                            value="{{ csrf_token }}"
+                        >
+
+                        <button
+                            class="icon-button"
+                            title="Delete item"
+                        >
+                            🗑
+                        </button>
+
+                    </form>
+
+                </td>
+
+            </tr>
+
+            {% endfor %}
+
+        </tbody>
+
+    </table>
+
+</div>
+
+</section>
+
+<!-- =========================================================
+     ADD INVENTORY MODAL
+     ========================================================= -->
+
+<div class="modal" id="add-item">
+
+<div class="modal-card">
+
+    <button
+        class="modal-close"
+        data-modal-close
+        type="button"
+    >
+        ×
+    </button>
+
+
+    <div class="eyebrow">
+        NEW CATALOG ITEM
+    </div>
+
+
+    <h2>
+        Add inventory item
+    </h2>
+
+
+    <form
+        method="post"
+        class="form-stack"
+    >
+
+        <input
+            type="hidden"
+            name="csrf"
+            value="{{ csrf_token }}"
+        >
+
+        <input
+            type="hidden"
+            name="action"
+            value="add_inventory"
+        >
+
+
+        <label>
+
+            Component name
+
+            <input
+                required
+                name="name"
+            >
+
+        </label>
+
+
+        <div class="form-grid">
+
+            <label>
+
+                Category
+
+                <input
+                    name="category"
+                    value="Other"
+                >
+
+            </label>
+
+
+            <label>
+
+                Location
+
+                <input
+                    name="location"
+                    value="Main Lab"
+                >
+
+            </label>
+
+
+            <label>
+
+                Quantity
+
+                <input
+                    type="number"
+                    min="0"
+                    name="quantity"
+                    value="1"
+                >
+
+            </label>
+
+
+            <label>
+
+                Minimum stock
+
+                <input
+                    type="number"
+                    min="1"
+                    name="minimum"
+                    value="1"
+                >
+
+            </label>
+
+        </div>
+
+
+        <button class="button full">
+
+            Add to inventory
+
+            <span>→</span>
+
+        </button>
+
+    </form>
+
+</div>
+
+</div>
+
+<!-- =========================================================
+     STUDENT PRIVACY MODAL
+     ========================================================= -->
+
+<div
+    class="modal"
+    id="student-privacy-modal"
+>
+
+<div class="modal-card">
+
+    <button
+        type="button"
+        class="modal-close"
+        onclick="closeStudentPrivacyModal()"
+    >
+        ×
+    </button>
+
+
+    <div class="eyebrow">
+        PROTECTED STUDENT INFORMATION
+    </div>
+
+
+    <h2 id="privacy-student-name">
+        Verify access
+    </h2>
+
+
+    <p id="privacy-message">
+        Enter your Lab Assistant password to view protected contact details.
+    </p>
+
+
+    <div id="privacy-password-section">
+
+        <label>
+
+            Admin password
+
+            <input
+                type="password"
+                id="privacy-admin-password"
+                placeholder="Enter your admin password"
+                autocomplete="current-password"
+            >
+
+        </label>
+
+
+        <button
+            type="button"
+            class="button full"
+            onclick="verifyStudentContact()"
+        >
+            Verify &amp; view contact
+            <span>→</span>
+        </button>
+
+    </div>
+
+
+    <div
+        id="privacy-contact-result"
+        style="display:none;margin-top:20px;"
+    >
+
+        <div class="panel">
+
+            <div class="eyebrow">
+                STUDENT DETAILS
+            </div>
+
+
+            <div class="form-grid">
+
+                <div>
+                    <small>Full Name</small>
+                    <strong id="privacy-full-name"></strong>
+                </div>
+
+
+                <div>
+                    <small>UID / Roll No.</small>
+                    <strong id="privacy-uid"></strong>
+                </div>
+
+
+                <div>
+                    <small>Email</small>
+                    <strong id="privacy-email"></strong>
+                </div>
+
+
+                <div>
+                    <small>Phone</small>
+                    <strong id="privacy-phone"></strong>
+                </div>
+
+
+                <div>
+                    <small>Branch</small>
+                    <strong id="privacy-branch"></strong>
+                </div>
+
+
+                <div>
+                    <small>Division</small>
+                    <strong id="privacy-division"></strong>
+                </div>
+
+
+                <div>
+                    <small>Year</small>
+                    <strong id="privacy-year"></strong>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+</div>
+
+<!-- =========================================================
+     REQUEST DETAILS MODAL
+     ========================================================= -->
+
+<div
+    class="modal"
+    id="request-details-modal"
+>
+
+<div
+    class="modal-card"
+    style="width:min(100%, 720px);"
+>
+
+    <button
+        type="button"
+        class="modal-close"
+        onclick="closeRequestDetailsModal()"
+    >
+        ×
+    </button>
+
+    <div class="eyebrow">
+        PROTECTED REQUEST INFORMATION
+    </div>
+
+    <h2 id="request-details-title">
+        Verify access
+    </h2>
+
+    <p id="request-details-message">
+        Enter your Admin password to view student and component details.
+    </p>
+
+
+    <div id="request-details-password-section">
+
+        <label>
+
+            Admin password
+
+            <input
+                type="password"
+                id="request-details-password"
+                placeholder="Enter your Admin password"
+                autocomplete="current-password"
+            >
+
+        </label>
+
+
+        <button
+            type="button"
+            class="button full"
+            style="margin-top:14px;"
+            onclick="verifyRequestDetails()"
+        >
+            Verify &amp; view details
+            <span>→</span>
+        </button>
+
+    </div>
+
+
+    <div
+        id="request-details-result"
+        style="display:none;margin-top:20px;"
+    >
+
+        <div
+            style="
+                display:grid;
+                grid-template-columns:1fr 1fr;
+                gap:14px;
+                margin-bottom:20px;
+            "
+        >
+
+            <div>
+                <small>Student</small>
+                <strong id="request-detail-student"></strong>
+            </div>
+
+
+            <div>
+                <small>ERP ID</small>
+                <strong id="request-detail-erp"></strong>
+            </div>
+
+
+            <div>
+                <small>UID</small>
+                <strong id="request-detail-uid"></strong>
+            </div>
+
+
+            <div>
+                <small>Phone</small>
+                <strong id="request-detail-phone"></strong>
+            </div>
+
+
+            <div>
+                <small>Email</small>
+                <strong id="request-detail-email"></strong>
+            </div>
+
+
+            <div>
+                <small>Branch / Division</small>
+                <strong id="request-detail-branch"></strong>
+            </div>
+
+
+            <div>
+                <small>Year</small>
+                <strong id="request-detail-year"></strong>
+            </div>
+
+
+            <div>
+                <small>Request Status</small>
+                <strong id="request-detail-status"></strong>
+            </div>
+
+
+            <div style="grid-column:1/-1;">
+                <small>Project</small>
+                <strong id="request-detail-project"></strong>
+            </div>
+
+
+            <div style="grid-column:1/-1;">
+
+                <small>Purpose</small>
+
+                <p
+                    id="request-detail-purpose"
+                    style="margin-top:4px;"
+                ></p>
+
+            </div>
+
+
+            <div>
+                <small>Due Date</small>
+                <strong id="request-detail-due"></strong>
+            </div>
+
+        </div>
+
+
+        <div class="eyebrow">
+            COMPONENTS
+        </div>
+
+
+        <div
+            id="request-detail-components"
+            class="pending-items"
+            style="margin-top:10px;"
+        ></div>
+
+    </div>
+
+</div>
+
+
+</div>
+
+<!-- =========================================================
+     CHART.JS
+     ========================================================= -->
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<script>
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    let componentData =
+        {{ historical_component_chart | tojson }};
+
+    let yearData =
+        {{ historical_year_chart | tojson }};
+
+    let departmentData =
+        {{ historical_department_chart | tojson }};
+
+    let projectData =
+        {{ historical_project_chart | tojson }};
+
+
+    /* =========================================================
+       NORMALIZATION HELPERS
+       ========================================================= */
+
+    function cleanText(value) {
+
+        return String(value || "")
+            .trim()
+            .replace(/\s+/g, " ");
+
+    }
+
+
+    function isBlankValue(value) {
+
+        const text =
+            cleanText(value).toLowerCase();
+
+        return (
+            !text ||
+            text === "-" ||
+            text === "n/a" ||
+            text === "na" ||
+            text === "null" ||
+            text === "none"
+        );
+
+    }
+
+
+    function normalizeComponentName(value) {
+
+        const text = cleanText(value);
+        const n = text.toLowerCase();
+
+
+        /* Jumper wire variations */
+
+        if (
+            n.includes("jumper") &&
+            n.includes("wire")
+        ) {
+            return "Jumper Wires";
+        }
+
+
+        /* ESP8266 / NodeMCU variations */
+
+        if (
+            n.includes("esp8266") ||
+            n.includes("esp 8266") ||
+            n.includes("node mcu") ||
+            n.includes("nodemcu") ||
+            (
+                n.includes("wifi module") &&
+                n.includes("node")
+            )
+        ) {
+            return "ESP8266";
+        }
+
+
+        /* Arduino variations */
+
+        if (
+            n.includes("arduino uno") ||
+            n.includes("arduion uno") ||
+            n.includes("uno atmega 328p")
+        ) {
+            return "Arduino UNO";
+        }
+
+
+        /* Breadboard */
+
+        if (n.includes("breadboard")) {
+            return "Breadboard";
+        }
+
+
+        /* LED */
+
+        if (
+            n === "led" ||
+            n.includes("5mm led")
+        ) {
+            return "LED";
+        }
+
+
+        /* Ultrasonic */
+
+        if (n.includes("ultrasonic")) {
+            return "Ultrasonic Sensor";
+        }
+
+
+        /* Resistors */
+
+        if (
+            n.includes("resistor") ||
+            /^\d+\s*[kKmM]?\s*[ωΩ]?$/.test(n)
+        ) {
+            return "Resistors";
+        }
+
+
+        /* Pulse / heartbeat */
+
+        if (
+            n.includes("heartbeat") ||
+            n.includes("pulse sensor")
+        ) {
+            return "Heartbeat / Pulse Sensor";
+        }
+
+
+        return text;
+    }
+
+
+    function mergeUsageData(
+        data,
+        normalizer,
+        removeBlank = true
+    ) {
+
+        const merged = {};
+
+
+        (data || []).forEach(item => {
+
+            if (!item) {
+                return;
+            }
+
+
+            const label =
+                normalizer(
+                    item.label ??
+                    item.component_name ??
+                    item.year ??
+                    item.department ??
+                    item.project_name
+                );
+
+
+            if (
+                removeBlank &&
+                isBlankValue(label)
+            ) {
+                return;
+            }
+
+
+            if (!label) {
+                return;
+            }
+
+
+            const numericValue =
+                Number(
+                    item.value ??
+                    item.total_quantity ??
+                    0
+                );
+
+
+            merged[label] =
+                (merged[label] || 0) +
+                (
+                    Number.isFinite(numericValue)
+                        ? numericValue
+                        : 0
+                );
+
+        });
+
+
+        return Object.entries(merged)
+            .map(([label, value]) => ({
+                label,
+                value
+            }))
+            .sort((a, b) => b.value - a.value);
+
+    }
+
+
+    /* =========================================================
+       NORMALIZED CHART DATA
+       ========================================================= */
+
+    componentData =
+        mergeUsageData(
+            componentData,
+            normalizeComponentName
+        );
+
+
+    yearData =
+        mergeUsageData(
+            yearData,
+            value => cleanText(value)
+        );
+
+
+    departmentData =
+        mergeUsageData(
+            departmentData,
+            value => cleanText(value)
+        );
+
+
+    projectData =
+        mergeUsageData(
+            projectData,
+            value => cleanText(value)
+        );
+
+
+    /* =========================================================
+       CATEGORY CLASSIFICATION
+       ========================================================= */
+
+    function componentCategory(value) {
+
+        const n =
+            cleanText(value).toLowerCase();
+
+
+        /* -------------------------
+           SENSORS
+           ------------------------- */
+
+        if (
+            n.includes("sensor") ||
+            n.includes("dht") ||
+            n.includes("ldr") ||
+            n.includes("ultrasonic") ||
+            n.includes("heartbeat") ||
+            n.includes("pulse") ||
+            n.includes("ir sensor") ||
+            n.includes("temperature sensor") ||
+            n.includes("humidity sensor") ||
+            n.includes("proximity")
+        ) {
+            return "Sensors";
+        }
+
+
+        /* -------------------------
+           ACTUATORS
+           ------------------------- */
+
+        if (
+            n.includes("motor") ||
+            n.includes("servo") ||
+            n.includes("stepper") ||
+            n.includes("relay") ||
+            n.includes("buzzer") ||
+            n.includes("solenoid") ||
+            n.includes("wheel")
+        ) {
+            return "Actuators";
+        }
+
+
+        /* -------------------------
+           DEVELOPMENT BOARDS
+           ------------------------- */
+
+        if (
+            n.includes("arduino") ||
+            n.includes("esp8266") ||
+            n.includes("nodemcu") ||
+            n.includes("raspberry") ||
+            n.includes("development board") ||
+            n.includes("microcontroller")
+        ) {
+            return "Development Boards";
+        }
+
+
+        /* -------------------------
+           COMMUNICATION
+           ------------------------- */
+
+        if (
+            n.includes("wifi") ||
+            n.includes("bluetooth") ||
+            n.includes("gsm") ||
+            n.includes("zigbee") ||
+            n.includes("ethernet")
+        ) {
+            return "Communication Modules";
+        }
+
+
+        /* -------------------------
+           DISPLAYS
+           ------------------------- */
+
+        if (
+            n.includes("display") ||
+            n.includes("lcd") ||
+            n.includes("oled")
+        ) {
+            return "Displays";
+        }
+
+
+        /* -------------------------
+           POWER
+           ------------------------- */
+
+        if (
+            n.includes("battery") ||
+            n.includes("charger") ||
+            n.includes("power supply") ||
+            n.includes("adapter") ||
+            n.includes("regulator")
+        ) {
+            return "Power Supplies";
+        }
+
+
+        /* -------------------------
+           CABLES
+           ------------------------- */
+
+        if (
+            n.includes("cable") ||
+            n.includes("usb") ||
+            n.includes("wire") ||
+            n.includes("connector")
+        ) {
+            return "Cables";
+        }
+
+
+        /* -------------------------
+           ICs & COMPONENTS
+           ------------------------- */
+
+        if (
+            n.includes("resistor") ||
+            n.includes("capacitor") ||
+            n.includes("transistor") ||
+            n.includes("diode") ||
+            n.includes("ic") ||
+            n.includes("7400") ||
+            n.includes("7404") ||
+            n.includes("7432") ||
+            n.includes("7436") ||
+            n.includes("potentiometer") ||
+            n.includes("ft232")
+        ) {
+            return "ICs & Components";
+        }
+
+
+        /* -------------------------
+           STORAGE
+           ------------------------- */
+
+        if (
+            n.includes("pendrive") ||
+            n.includes("memory card") ||
+            n.includes("ssd")
+        ) {
+            return "Storage";
+        }
+
+
+        /* -------------------------
+           TOOLS
+           ------------------------- */
+
+        if (
+            n.includes("multimeter") ||
+            n.includes("soldering") ||
+            n.includes("screw driver") ||
+            n.includes("screwdriver") ||
+            n.includes("scissors")
+        ) {
+            return "Tools";
+        }
+
+
+        return "Other";
+    }
+
+
+    /* =========================================================
+       CATEGORY DATA
+       ========================================================= */
+
+    const categoryMerged = {};
+
+
+    componentData.forEach(item => {
+
+        const category =
+            componentCategory(item.label);
+
+
+        categoryMerged[category] =
+            (categoryMerged[category] || 0) +
+            Number(item.value || 0);
+
+    });
+
+
+    const categoryData =
+        Object.entries(categoryMerged)
+            .map(([label, value]) => ({
+                label,
+                value
+            }))
+            .sort(
+                (a, b) =>
+                    b.value - a.value
+            );
+
+
+    /* =========================================================
+       CHART REFERENCES
+       ========================================================= */
+
+    let activeCharts = [];
+
+
+    /* =========================================================
+       THEME COLORS
+       ========================================================= */
+
+    function getChartTheme() {
+
+        const rootStyles =
+            getComputedStyle(
+                document.documentElement
+            );
+
+
+        return {
+
+            text:
+                rootStyles
+                    .getPropertyValue("--text")
+                    .trim(),
+
+            muted:
+                rootStyles
+                    .getPropertyValue("--muted")
+                    .trim(),
+
+            line:
+                rootStyles
+                    .getPropertyValue("--line")
+                    .trim(),
+
+            surface:
+                rootStyles
+                    .getPropertyValue("--surface")
+                    .trim()
+
+        };
+
+    }
+
+
+    /* =========================================================
+       CREATE CHARTS
+       ========================================================= */
+
+    function buildCharts() {
+
+        activeCharts.forEach(chart => {
+
+            try {
+                chart.destroy();
+            } catch (e) {}
+
+        });
+
+
+        activeCharts = [];
+
+
+        const theme =
+            getChartTheme();
+
+
+        /* =====================================================
+           COMPONENT CHART
+           ===================================================== */
+
+        const componentCanvas =
+            document.getElementById(
+                "historicalComponentChart"
+            );
+
+
+        if (
+            componentCanvas &&
+            componentData.length
+        ) {
+
+            activeCharts.push(
+                new Chart(
+                    componentCanvas,
+                    {
+
+                        type: "bar",
+
+                        data: {
+
+                            labels:
+                                componentData.map(
+                                    item => item.label
+                                ),
+
+                            datasets: [
+                                {
+                                    label:
+                                        "Quantity issued",
+
+                                    data:
+                                        componentData.map(
+                                            item => item.value
+                                        ),
+
+                                    borderWidth: 0,
+
+                                    borderRadius: 7,
+
+                                    backgroundColor:
+                                        "rgba(77,112,244,0.75)"
+                                }
+                            ]
+                        },
+
+
+                        options: {
+
+                            indexAxis: "y",
+
+                            responsive: true,
+
+                            maintainAspectRatio: false,
+
+                            animation: {
+                                duration: 300
+                            },
+
+                            plugins: {
+
+                                legend: {
+                                    display: false
+                                },
+
+                                tooltip: {
+
+                                    callbacks: {
+
+                                        label:
+                                            function(context) {
+
+                                                return (
+                                                    " Quantity: " +
+                                                    context.raw
+                                                );
+
+                                            }
+
+                                    }
+
+                                }
+
+                            },
+
+
+                            scales: {
+
+                                x: {
+
+                                    beginAtZero: true,
+
+                                    grid: {
+                                        color:
+                                            theme.line
+                                    },
+
+                                    ticks: {
+
+                                        color:
+                                            theme.muted,
+
+                                        precision: 0
+
+                                    }
+
+                                },
+
+
+                                y: {
+
+                                    grid: {
+                                        display: false
+                                    },
+
+                                    ticks: {
+
+                                        color:
+                                            theme.text,
+
+                                        font: {
+                                            size: 12
+                                        }
+
+                                    }
+
+                                }
+
+                            }
+
+                        }
+
+                    }
+                )
+            );
+
+        }
+
+
+        /* =====================================================
+           YEAR CHART
+           ===================================================== */
+
+        const yearCanvas =
+            document.getElementById(
+                "historicalYearChart"
+            );
+
+
+        if (
+            yearCanvas &&
+            yearData.length
+        ) {
+
+            activeCharts.push(
+                new Chart(
+                    yearCanvas,
+                    {
+
+                        type: "bar",
+
+                        data: {
+
+                            labels:
+                                yearData.map(
+                                    item => item.label
+                                ),
+
+                            datasets: [
+                                {
+                                    label:
+                                        "Quantity issued",
+
+                                    data:
+                                        yearData.map(
+                                            item => item.value
+                                        ),
+
+                                    borderWidth: 0,
+
+                                    borderRadius: 8,
+
+                                    backgroundColor:
+                                        "rgba(129,96,233,0.75)"
+                                }
+                            ]
+
+                        },
+
+
+                        options: {
+
+                            responsive: true,
+
+                            maintainAspectRatio: false,
+
+                            animation: {
+                                duration: 300
+                            },
+
+                            plugins: {
+
+                                legend: {
+                                    display: false
+                                }
+
+                            },
+
+
+                            scales: {
+
+                                x: {
+
+                                    grid: {
+                                        display: false
+                                    },
+
+                                    ticks: {
+
+                                        color:
+                                            theme.text,
+
+                                        font: {
+                                            size: 12
+                                        }
+
+                                    }
+
+                                },
+
+
+                                y: {
+
+                                    beginAtZero: true,
+
+                                    grid: {
+                                        color:
+                                            theme.line
+                                    },
+
+                                    ticks: {
+
+                                        color:
+                                            theme.muted,
+
+                                        precision: 0
+
+                                    }
+
+                                }
+
+                            }
+
+                        }
+
+                    }
+                )
+            );
+
+        }
+
+
+/* =====================================================
+   DEPARTMENT CHART
+   ===================================================== */
+
+const departmentCanvas =
+    document.getElementById("historicalDepartmentChart");
+
+
+if (departmentCanvas && departmentData.length) {
+
+    function normalizeDepartmentName(value) {
+        return String(value || "")
+            .trim()
+            .toUpperCase()
+            .replace(/\s+/g, "")
+            .replace(/&+/g, "&")
+            .replace(/[^A-Z&]/g, "");
+    }
+
+    const departmentColors = {
+        "IOT": "#4169E1",
+        "ECS": "#8A5CF6",
+        "EXTC": "#20B486",
+        "MECH": "#F3A33D",
+        "AIDS": "#E45B6E",
+        "AIML": "#00A6D6",
+        "COMP": "#C23DB8",
+        "MME": "#0FA9A0"
+    };
+
+    const fallbackColors = [
+        "#795548", "#607D8B", "#FF6F61",
+        "#6C5CE7", "#2E86AB", "#9B59B6"
+    ];
+
+    let fallbackIndex = 0;
+
+    const departmentBackgroundColors =
+        departmentData.map(item => {
+            const normalizedLabel =
+                normalizeDepartmentName(item.label);
+
+            if (departmentColors[normalizedLabel]) {
+                return departmentColors[normalizedLabel];
+            }
+
+            const color =
+                fallbackColors[fallbackIndex % fallbackColors.length];
+            fallbackIndex++;
+            return color;
+        });
+
+    /* -----------------------------------------------------
+       MINIMUM SLICE SIZE FIX
+       Tiny departments (AI&DS, AIML, COMP, MME) become
+       invisible slivers next to IoT's huge share, making
+       the chart look "empty" there. Boost any slice below
+       a visibility floor to a minimum displayed size, but
+       keep the REAL numbers for tooltips so nothing is
+       misreported.
+       ----------------------------------------------------- */
+
+    const realValues = departmentData.map(item => Number(item.value || 0));
+    const totalReal = realValues.reduce((a, b) => a + b, 0);
+    const MIN_SLICE_SHARE = 0.035; // 3.5% floor — tune if still too thin
+    const minDisplayValue = totalReal * MIN_SLICE_SHARE;
+
+    const displayValues = realValues.map(v =>
+        v > 0 && v < minDisplayValue ? minDisplayValue : v
+    );
+
+    activeCharts.push(
+        new Chart(
+            departmentCanvas,
+            {
+                type: "doughnut",
+
+                data: {
+                    labels: departmentData.map(
+                        item => String(item.label || "").trim()
+                    ),
+
+                    datasets: [
+                        {
+                            data: displayValues,
+
+                            // stash real numbers on the dataset for tooltip use
+                            realValues: realValues,
+
+                            backgroundColor: departmentBackgroundColors,
+
+                            borderColor:
+                                getComputedStyle(document.documentElement)
+                                    .getPropertyValue("--surface")
+                                    .trim(),
+
+                            borderWidth: 4,
+                            hoverBorderWidth: 4,
+                            hoverOffset: 10
+                        }
+                    ]
+                },
+
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: "58%",
+                    animation: { duration: 500 },
+
+                    plugins: {
+                        legend: {
+                            position: "bottom",
+                            labels: {
+                                color:
+                                    getComputedStyle(document.documentElement)
+                                        .getPropertyValue("--text")
+                                        .trim(),
+                                usePointStyle: true,
+                                pointStyle: "circle",
+                                padding: 18,
+                                boxWidth: 12,
+                                boxHeight: 12,
+                                font: { family: "DM Sans", size: 13, weight: "600" }
+                            }
+                        },
+
+                        tooltip: {
+                            enabled: true,
+                            callbacks: {
+                                label: function (context) {
+                                    const real =
+                                        context.dataset.realValues[context.dataIndex];
+                                    const pct =
+                                        totalReal > 0
+                                            ? ((real / totalReal) * 100).toFixed(1)
+                                            : 0;
+                                    return (
+                                        " " + context.label + ": " + real + " (" + pct + "%)"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    );
+}
+        /* =====================================================
+           PROJECT CHART
+           ===================================================== */
+
+        const projectCanvas =
+            document.getElementById(
+                "historicalProjectChart"
+            );
+
+
+        if (
+            projectCanvas &&
+            projectData.length
+        ) {
+
+            activeCharts.push(
+                new Chart(
+                    projectCanvas,
+                    {
+
+                        type: "bar",
+
+                        data: {
+
+                            labels:
+                                projectData.map(
+                                    item => item.label
+                                ),
+
+                            datasets: [
+                                {
+
+                                    label:
+                                        "Quantity issued",
+
+                                    data:
+                                        projectData.map(
+                                            item => item.value
+                                        ),
+
+                                    borderWidth: 0,
+
+                                    borderRadius: 7,
+
+                                    backgroundColor:
+                                        "rgba(37,181,138,0.75)"
+
+                                }
+
+                            ]
+
+                        },
+
+
+                        options: {
+
+                            indexAxis: "y",
+
+                            responsive: true,
+
+                            maintainAspectRatio: false,
+
+                            animation: {
+                                duration: 300
+                            },
+
+                            plugins: {
+
+                                legend: {
+                                    display: false
+                                },
+
+                                tooltip: {
+
+                                    callbacks: {
+
+                                        label:
+                                            function(context) {
+
+                                                return (
+                                                    " Quantity: " +
+                                                    context.raw
+                                                );
+
+                                            }
+
+                                    }
+
+                                }
+
+                            },
+
+
+                            scales: {
+
+                                x: {
+
+                                    beginAtZero: true,
+
+                                    grid: {
+                                        color:
+                                            theme.line
+                                    },
+
+                                    ticks: {
+
+                                        color:
+                                            theme.muted,
+
+                                        precision: 0
+
+                                    }
+
+                                },
+
+
+                                y: {
+
+                                    grid: {
+                                        display: false
+                                    },
+
+                                    ticks: {
+
+                                        color:
+                                            theme.text,
+
+                                        autoSkip: false,
+
+                                        font: {
+                                            size: 11
+                                        }
+
+                                    }
+
+                                }
+
+                            }
+
+                        }
+
+                    }
+                )
+            );
+
+        }
+
+
+        /* =====================================================
+           CATEGORY CHART
+           ===================================================== */
+
+        const categoryCanvas =
+            document.getElementById(
+                "historicalCategoryChart"
+            );
+
+
+        if (
+            categoryCanvas &&
+            categoryData.length
+        ) {
+
+            activeCharts.push(
+                new Chart(
+                    categoryCanvas,
+                    {
+
+                        type: "doughnut",
+
+                        data: {
+
+                            labels:
+                                categoryData.map(
+                                    item => item.label
+                                ),
+
+                            datasets: [
+                                {
+
+                                    data:
+                                        categoryData.map(
+                                            item => item.value
+                                        ),
+
+                                    borderWidth: 2,
+
+                                    borderColor:
+                                        theme.surface,
+
+                                    backgroundColor: [
+
+                                        "#4d70f4",
+                                        "#8160e9",
+                                        "#25b58a",
+                                        "#e7a147",
+                                        "#e36f79",
+                                        "#5c8df6",
+                                        "#a378ea",
+                                        "#42c6a0",
+                                        "#f0b45f",
+                                        "#ef8790",
+                                        "#7f8cff",
+                                        "#bb8bea"
+
+                                    ]
+
+                                }
+                            ]
+
+                        },
+
+
+                        options: {
+
+                            responsive: true,
+
+                            maintainAspectRatio: false,
+
+                            cutout: "40%",
+
+                            layout: {
+                                padding: {
+                                    top: 5,
+                                    right: 10,
+                                    bottom: 5,
+                                    left: 10
+                                }
+                            },
+
+                            animation: {
+                                duration: 300
+                            },
+
+                            plugins: {
+
+                                legend: {
+
+                                    position: "bottom",
+
+                                    labels: {
+
+                                        color: theme.text,
+
+                                        usePointStyle: true,
+
+                                        padding: 14,
+
+                                        boxWidth: 11,
+
+                                        boxHeight: 11,
+
+                                        font: {
+                                            size: 12,
+                                            weight: "600"
+                                        }
+
+                                    }
+
+                                }
+
+                            }
+
+                        }
+                    }
+                )
+            );
+
+        }
+
+    }
+
+
+    /* =========================================================
+       INITIAL BUILD
+       ========================================================= */
+
+    buildCharts();
+
+
+    /* =========================================================
+       UPDATE CHARTS WHEN LIGHT/DARK MODE CHANGES
+       ========================================================= */
+
+    const themeObserver =
+        new MutationObserver(
+            function(mutations) {
+
+                mutations.forEach(
+                    function(mutation) {
+
+                        if (
+                            mutation.type === "attributes" &&
+                            mutation.attributeName === "data-theme"
+                        ) {
+
+                            setTimeout(
+                                buildCharts,
+                                50
+                            );
+
+                        }
+
+                    }
+                );
+
+            }
+        );
+
+
+    themeObserver.observe(
+        document.documentElement,
+        {
+            attributes: true,
+            attributeFilter: [
+                "data-theme"
+            ]
+        }
+    );
+
+
+});
+
+</script>
+
 {% endblock %}
