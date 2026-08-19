@@ -74,6 +74,8 @@ pillow==12.1.1
 plotly==6.3.1
 proto-plus==1.27.1
 protobuf==5.29.6
+psycopg==3.3.4
+psycopg-binary==3.3.4
 pyarrow==22.0.0
 pyasn1==0.6.3
 pyasn1_modules==0.4.2

@@ -53,3 +53,4 @@ __pycache__/
 *.py[cod]
 .env
 data/*.db
+app_before_postgres.py

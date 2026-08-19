@@ -17,8 +17,11 @@ from flask import has_request_context
 from openpyxl import load_workbook
 import os
 import sqlite3
+import psycopg
+from psycopg.rows import dict_row
 import smtplib
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -57,7 +60,15 @@ from werkzeug.security import check_password_hash, generate_password_hash
 load_dotenv()
 
 ROOT = Path(__file__).resolve().parent
-DB_PATH = Path(os.getenv("SQLITE_PATH", ROOT / "data" / "labvault.db"))
+
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+
+DB_PATH = Path(
+    os.getenv(
+        "SQLITE_PATH",
+        ROOT / "data" / "labvault.db"
+    )
+)
 
 print("==========================================")
 print("LABVAULT DATABASE:", DB_PATH.resolve())
@@ -90,41 +101,154 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
 )
 DB_LOCK = threading.Lock()
+PG_BOOTSTRAP = False
 
 
 def utcnow():
     return datetime.now(timezone.utc).replace(microsecond=0)
 
 
+def adapt_sql(sql):
+    """
+    Convert the application's SQLite-style '?' placeholders
+    to PostgreSQL '%s' placeholders when PostgreSQL is active.
+
+    SQLite remains unchanged.
+    """
+    if DATABASE_URL:
+        return sql.replace("?", "%s")
+
+    return sql
+
+
 def db():
     if "db" not in g:
-        g.db = sqlite3.connect(DB_PATH)
-        g.db.row_factory = sqlite3.Row
-        g.db.execute("PRAGMA foreign_keys = ON")
+
+        if DATABASE_URL:
+
+            g.db = psycopg.connect(
+                DATABASE_URL,
+                row_factory=dict_row,
+            )
+
+        else:
+
+            g.db = sqlite3.connect(
+                DB_PATH
+            )
+
+            g.db.row_factory = sqlite3.Row
+
+            g.db.execute(
+                "PRAGMA foreign_keys = ON"
+            )
+
     return g.db
 
 
 @app.teardown_appcontext
 def close_db(_error=None):
+
     conn = g.pop("db", None)
+
     if conn:
         conn.close()
 
 
 def query(sql, args=(), one=False):
-    cur = db().execute(sql, args)
-    rows = cur.fetchone() if one else cur.fetchall()
+
+    sql = adapt_sql(sql)
+
+    cur = db().execute(
+        sql,
+        args
+    )
+
+    rows = (
+        cur.fetchone()
+        if one
+        else cur.fetchall()
+    )
+
     cur.close()
+
     return rows
 
 
 def execute(sql, args=()):
+    global PG_BOOTSTRAP
+
+    sql = adapt_sql(sql)
+
     with DB_LOCK:
-        cur = db().execute(sql, args)
+
+        # -----------------------------------------------------
+        # PostgreSQL
+        # -----------------------------------------------------
+
+        if DATABASE_URL:
+
+            clean_sql = sql.strip().rstrip(";")
+
+            is_insert = (
+                clean_sql
+                .lstrip()
+                .lower()
+                .startswith("insert")
+            )
+
+            if is_insert:
+
+                if " returning " not in clean_sql.lower():
+                    clean_sql += " RETURNING id"
+
+                cur = db().execute(
+                    clean_sql,
+                    args
+                )
+
+                row = cur.fetchone()
+
+                # During fresh PostgreSQL initialization,
+                # all Excel imports are committed together.
+                if not PG_BOOTSTRAP:
+                    db().commit()
+
+                cur.close()
+
+                if row:
+                    return row["id"]
+
+                return None
+
+            cur = db().execute(
+                sql,
+                args
+            )
+
+            if not PG_BOOTSTRAP:
+                db().commit()
+
+            cur.close()
+
+            return None
+
+        # -----------------------------------------------------
+        # SQLite
+        # -----------------------------------------------------
+
+        cur = db().execute(
+            sql,
+            args
+        )
+
         db().commit()
+
         last = cur.lastrowid
+
         cur.close()
-    return last
+
+        return last
 
 def sync_faculty_from_excel():
     """
@@ -397,7 +521,7 @@ def sync_faculty_from_excel():
             "IoT faculty Excel sync failed."
         )
 
-def init_db():
+def init_db_sqlite():
     with app.app_context():
         db().executescript(
             """
@@ -905,6 +1029,361 @@ def init_db():
                     ),
                 )
 
+def init_db_postgres():
+    """
+    Initialize a completely fresh PostgreSQL LabVault database.
+
+    No data is copied from local labvault.db.
+
+    Excel data is imported:
+        - IoT faculty
+        - inventory
+        - past component usage
+
+    Transactional application data starts fresh.
+    """
+
+    global PG_BOOTSTRAP
+
+    schema = """
+    CREATE TABLE IF NOT EXISTS users (
+        id BIGSERIAL PRIMARY KEY,
+        role TEXT NOT NULL CHECK(role IN ('student','admin')),
+        full_name TEXT NOT NULL,
+        erp_id TEXT UNIQUE,
+        uid TEXT UNIQUE,
+        email TEXT UNIQUE,
+        phone TEXT,
+        branch TEXT,
+        division TEXT,
+        year TEXT,
+        password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        is_hod INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory (
+        id BIGSERIAL PRIMARY KEY,
+        source_file TEXT NOT NULL,
+        source_key TEXT NOT NULL UNIQUE,
+        stock_number TEXT,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        description TEXT,
+        location TEXT,
+        total_qty INTEGER NOT NULL DEFAULT 0,
+        available_qty INTEGER NOT NULL DEFAULT 0,
+        minimum_stock INTEGER NOT NULL DEFAULT 1,
+        condition TEXT NOT NULL DEFAULT 'Good',
+        maintenance_status TEXT NOT NULL DEFAULT 'Clear',
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS requests (
+        id BIGSERIAL PRIMARY KEY,
+        request_code TEXT NOT NULL UNIQUE,
+        student_id BIGINT NOT NULL REFERENCES users(id),
+        project_title TEXT NOT NULL,
+        purpose TEXT NOT NULL,
+        mentor_name TEXT NOT NULL,
+        mentor_email TEXT NOT NULL,
+        mentor_phone TEXT,
+        hod_name TEXT NOT NULL,
+        hod_email TEXT NOT NULL,
+        hod_phone TEXT,
+        due_date TEXT NOT NULL,
+        return_days INTEGER NOT NULL DEFAULT 3,
+        admin_status TEXT NOT NULL DEFAULT 'PENDING',
+        mentor_status TEXT NOT NULL DEFAULT 'PENDING',
+        hod_status TEXT NOT NULL DEFAULT 'PENDING',
+        overall_status TEXT NOT NULL DEFAULT 'PENDING_ADMIN',
+        rejection_reason TEXT,
+        collection_otp_ready INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        faculty_id BIGINT,
+        mentor_type TEXT DEFAULT 'faculty',
+        mentor_verified INTEGER NOT NULL DEFAULT 1,
+        mentor_verified_at TEXT,
+        mentor_verified_by BIGINT,
+        mentor_verification_reason TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS request_items (
+        id BIGSERIAL PRIMARY KEY,
+        request_id BIGINT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+        inventory_id BIGINT NOT NULL REFERENCES inventory(id),
+        quantity INTEGER NOT NULL,
+        UNIQUE(request_id, inventory_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS approval_tokens (
+        id BIGSERIAL PRIMARY KEY,
+        request_id BIGINT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+        stage TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        created_at TEXT NOT NULL,
+        used_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        created_at TEXT NOT NULL,
+        used_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS admin_password_requests (
+        id BIGSERIAL PRIMARY KEY,
+        admin_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        new_password_hash TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        created_at TEXT NOT NULL,
+        used_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS admin_password_change_requests (
+        id BIGSERIAL PRIMARY KEY,
+        admin_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reason TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        created_at TEXT NOT NULL,
+        authorized_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS otp_tokens (
+        id BIGSERIAL PRIMARY KEY,
+        request_id BIGINT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        otp_hash TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        used_at TEXT,
+        created_at TEXT NOT NULL,
+        student_id BIGINT
+    );
+
+    CREATE TABLE IF NOT EXISTS issues (
+        id BIGSERIAL PRIMARY KEY,
+        request_id BIGINT NOT NULL REFERENCES requests(id),
+        student_id BIGINT NOT NULL REFERENCES users(id),
+        issued_at TEXT NOT NULL,
+        due_date TEXT NOT NULL,
+        returned_at TEXT,
+        return_condition TEXT,
+        return_remarks TEXT,
+        extensions_used INTEGER NOT NULL DEFAULT 0,
+        overdue_notified_at TEXT,
+        due_notified_at TEXT,
+        extension_reason TEXT,
+        extension_requested_days INTEGER,
+        extension_status TEXT NOT NULL DEFAULT 'NONE',
+        extension_admin_status TEXT NOT NULL DEFAULT 'PENDING',
+        extension_mentor_status TEXT NOT NULL DEFAULT 'PENDING',
+        extension_hod_status TEXT NOT NULL DEFAULT 'PENDING'
+    );
+
+    CREATE TABLE IF NOT EXISTS notifications (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL REFERENCES users(id),
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        is_read INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT,
+        role TEXT,
+        action TEXT NOT NULL,
+        description TEXT,
+        created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS past_component_usage (
+        id BIGSERIAL PRIMARY KEY,
+        source_key TEXT UNIQUE NOT NULL,
+        student_name TEXT,
+        student_email TEXT,
+        year TEXT,
+        department TEXT,
+        division TEXT,
+        project_name TEXT,
+        component_name TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        issue_date TEXT,
+        returned_date TEXT,
+        condition TEXT,
+        phone TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS faculty (
+        id BIGSERIAL PRIMARY KEY,
+        full_name TEXT NOT NULL,
+        designation TEXT,
+        department TEXT NOT NULL DEFAULT 'IoT',
+        email TEXT NOT NULL UNIQUE,
+        phone TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """
+
+    try:
+
+        # -----------------------------------------------------
+        # CREATE SCHEMA
+        # -----------------------------------------------------
+
+        db().execute(schema)
+
+        # -----------------------------------------------------
+        # START ONE TRANSACTION FOR INITIAL DATA
+        # -----------------------------------------------------
+
+        PG_BOOTSTRAP = True
+
+        # -----------------------------------------------------
+        # FRESH LAB ASSISTANT
+        # -----------------------------------------------------
+
+        admin = query(
+            """
+            SELECT id
+            FROM users
+            WHERE role='admin'
+            AND COALESCE(is_hod, 0)=0
+            LIMIT 1
+            """,
+            one=True,
+        )
+
+        if not admin:
+
+            execute(
+                """
+                INSERT INTO users
+                (
+                    role,
+                    full_name,
+                    email,
+                    password_hash,
+                    is_hod,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, 0, ?)
+                """,
+                (
+                    "admin",
+                    "Lab Assistant",
+                    MAIL_SENDER.lower(),
+                    generate_password_hash(
+                        ADMIN_PASSWORD
+                    ),
+                    utcnow().isoformat(),
+                ),
+            )
+
+        # -----------------------------------------------------
+        # FRESH HOD
+        # -----------------------------------------------------
+
+        if HOD_EMAIL and HOD_PASSWORD:
+
+            hod = query(
+                """
+                SELECT id
+                FROM users
+                WHERE lower(email)=?
+                LIMIT 1
+                """,
+                (
+                    HOD_EMAIL.lower(),
+                ),
+                one=True,
+            )
+
+            if not hod:
+
+                execute(
+                    """
+                    INSERT INTO users
+                    (
+                        role,
+                        full_name,
+                        email,
+                        password_hash,
+                        is_hod,
+                        created_at
+                    )
+                    VALUES (?, ?, ?, ?, 1, ?)
+                    """,
+                    (
+                        "admin",
+                        HOD_NAME,
+                        HOD_EMAIL.lower(),
+                        generate_password_hash(
+                            HOD_PASSWORD
+                        ),
+                        utcnow().isoformat(),
+                    ),
+                )
+
+        # -----------------------------------------------------
+        # EXCEL DATA
+        # -----------------------------------------------------
+
+        sync_faculty_from_excel()
+
+        import_inventory()
+
+        import_past_component_usage()
+
+        # -----------------------------------------------------
+        # COMMIT EVERYTHING TOGETHER
+        # -----------------------------------------------------
+
+        db().commit()
+
+        PG_BOOTSTRAP = False
+
+        app.logger.info(
+            "Fresh PostgreSQL database initialized successfully."
+        )
+
+    except Exception:
+
+        db().rollback()
+
+        PG_BOOTSTRAP = False
+
+        app.logger.exception(
+            "Fresh PostgreSQL initialization failed."
+        )
+
+        raise
+
+def init_db():
+
+    if DATABASE_URL:
+
+        init_db_postgres()
+
+    else:
+
+        init_db_sqlite()
 
 def category_for(name):
     n = name.lower()
@@ -1840,7 +2319,7 @@ def register():
                 url_for("login", role="student")
             )
 
-        except sqlite3.IntegrityError:
+        except (sqlite3.IntegrityError, psycopg.IntegrityError):
             flash(
                 "That ERP ID, UID, or email is already registered.",
                 "error"
