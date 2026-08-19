@@ -5566,7 +5566,7 @@ def admin_dashboard():
 
         "pending": query(
             "SELECT COUNT(*) AS n "
-            "FROM requests WHERE overall_status LIKE 'PENDING%'",
+            "FROM requests WHERE overall_status LIKE 'PENDING%%'",
             one=True,
         )["n"],
 
