@@ -6056,22 +6056,22 @@ def admin_dashboard():
         value = clean_value(value).lower()
 
         year_map = {
-            "1": "1st",
-            "1st": "1st",
-            "1st year": "1st",
+        "1": "F.T.",
+        "1st": "F.T.",
+        "1st year": "F.T.",
 
-            "2": "2nd",
-            "2nd": "2nd",
-            "2nd year": "2nd",
+        "2": "S.T.",
+        "2nd": "S.T.",
+        "2nd year": "S.T.",
 
-            "3": "3rd",
-            "3rd": "3rd",
-            "3rd year": "3rd",
+        "3": "T.T.",
+        "3rd": "T.T.",
+        "3rd year": "T.T.",
 
-            "4": "4th",
-            "4th": "4th",
-            "4th year": "4th",
-        }
+        "4": "B.T.",
+        "4th": "B.T.",
+        "4th year": "B.T.",
+    }
 
         return year_map.get(value, "")
 
@@ -6269,28 +6269,45 @@ def admin_dashboard():
     # ---------------------------------------------------------
 
     year_stats = {
-        "1st": {
-            "year": "1st",
+        "F.T.": {
+            "year": "F.T.",
             "issue_count": 0,
             "total_quantity": 0,
         },
-        "2nd": {
-            "year": "2nd",
+        "S.T.": {
+            "year": "S.T.",
             "issue_count": 0,
             "total_quantity": 0,
         },
-        "3rd": {
-            "year": "3rd",
+        "T.T.": {
+            "year": "T.T.",
             "issue_count": 0,
             "total_quantity": 0,
         },
-        "4th": {
-            "year": "4th",
+        "B.T.": {
+            "year": "B.T.",
             "issue_count": 0,
             "total_quantity": 0,
         },
     }
 
+    year_total_quantity = sum(
+            item["total_quantity"]
+            for item in historical_years
+        )
+
+    for item in historical_years:
+            if year_total_quantity > 0:
+                item["percentage"] = round(
+                    (
+                        item["total_quantity"]
+                        / year_total_quantity
+                    ) * 100,
+                    1,
+                )
+            else:
+                item["percentage"] = 0
+                
     for row in historical_rows:
 
         year = normalize_year(
@@ -6442,12 +6459,13 @@ def admin_dashboard():
     ]
 
     historical_year_chart = [
-        {
-            "label": item["year"],
-            "value": item["total_quantity"],
-        }
-        for item in historical_years
-    ]
+    {
+        "label": item["year"],
+        "value": item["total_quantity"],
+        "percentage": item["percentage"],
+    }
+    for item in historical_years
+]
 
     historical_department_chart = [
         {
