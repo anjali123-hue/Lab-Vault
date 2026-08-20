@@ -65,7 +65,13 @@
             <input
                 required
                 name="identity"
-                placeholder="{{ 'admin' if role == 'admin' else 'SXXXXXXXXXX' }}"
+                placeholder="{{
+                        'admin'
+                        if role == 'admin'
+                        else 'Enter your HOD email'
+                        if role == 'hod'
+                        else 'Enter your Student ERP ID'
+                    }}"
                 autocomplete="username"
             >
         </label>

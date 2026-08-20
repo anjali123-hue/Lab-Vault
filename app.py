@@ -20,6 +20,7 @@ import sqlite3
 import psycopg
 from psycopg.rows import dict_row
 import smtplib
+import shutil
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -936,6 +937,7 @@ def init_db_sqlite():
                 )
         import_inventory()
         import_past_component_usage()
+        sync_kits_from_excel()
 
         # =========================================================
         # HOD ACCOUNT
@@ -1346,9 +1348,7 @@ def init_db_postgres():
         # -----------------------------------------------------
 
         sync_faculty_from_excel()
-
         import_inventory()
-
         import_past_component_usage()
 
         # -----------------------------------------------------
@@ -1404,6 +1404,261 @@ def category_for(name):
             return label
     return "Consumables"
 
+def sync_kits_from_excel():
+    """
+    Import new kits from attached_assets/kits.xlsx.
+
+    Expected columns:
+        Name
+        Quantity
+
+    Kits are stored in the normal inventory table so students
+    can search for and request them like other inventory items.
+
+    Existing kit records are NOT overwritten on application restart.
+    This prevents the Excel quantity from resetting live inventory
+    after students/admins have already used or adjusted stock.
+
+    New kits found in the Excel file are inserted automatically.
+    """
+
+    kits_file = os.path.join(
+        BASE_DIR,
+        "attached_assets",
+        "kits.xlsx",
+    )
+
+    if not os.path.isfile(kits_file):
+        app.logger.warning(
+            "Kits Excel file not found: %s",
+            kits_file,
+        )
+        return
+
+    try:
+        workbook = load_workbook(
+            filename=kits_file,
+            data_only=True,
+            read_only=True,
+        )
+
+        sheet = workbook.active
+
+        rows = list(
+            sheet.iter_rows(
+                values_only=True
+            )
+        )
+
+        workbook.close()
+
+        # -----------------------------------------------------
+        # Basic file check
+        # -----------------------------------------------------
+
+        if len(rows) < 2:
+
+            app.logger.warning(
+                "kits.xlsx does not contain any kit records."
+            )
+
+            return
+
+        # -----------------------------------------------------
+        # Expected headers:
+        # Name | Quantity
+        # -----------------------------------------------------
+
+        headers = [
+            str(value).strip()
+            if value is not None
+            else ""
+            for value in rows[0]
+        ]
+
+        if (
+            "Name" not in headers
+            or "Quantity" not in headers
+        ):
+
+            app.logger.error(
+                "kits.xlsx must contain 'Name' and 'Quantity' columns. "
+                "Found: %s",
+                headers,
+            )
+
+            return
+
+        name_col = headers.index("Name")
+        quantity_col = headers.index("Quantity")
+
+        inserted = 0
+        skipped = 0
+
+        now = utcnow().isoformat()
+
+        # -----------------------------------------------------
+        # Read kit rows
+        # -----------------------------------------------------
+
+        for row in rows[1:]:
+
+            if not row:
+                continue
+
+            if name_col >= len(row):
+                skipped += 1
+                continue
+
+            name_value = row[name_col]
+
+            if name_value is None:
+                skipped += 1
+                continue
+
+            name = str(
+                name_value
+            ).strip()
+
+            if not name:
+                skipped += 1
+                continue
+
+            # -------------------------------------------------
+            # Read quantity
+            # -------------------------------------------------
+
+            if quantity_col >= len(row):
+                skipped += 1
+                continue
+
+            raw_quantity = row[quantity_col]
+
+            try:
+
+                quantity = int(
+                    float(
+                        raw_quantity
+                        if raw_quantity is not None
+                        else 0
+                    )
+                )
+
+            except (
+                TypeError,
+                ValueError,
+            ):
+
+                app.logger.warning(
+                    "Skipping kit with invalid quantity. "
+                    "Name=%s Quantity=%s",
+                    name,
+                    raw_quantity,
+                )
+
+                skipped += 1
+                continue
+
+            if quantity <= 0:
+
+                skipped += 1
+                continue
+
+            # -------------------------------------------------
+            # Stable inventory key
+            # -------------------------------------------------
+
+            source_key = (
+                "kit::"
+                + name.lower()
+                .strip()
+                .replace(" ", "_")
+            )
+
+            existing = query(
+                """
+                SELECT id
+                FROM inventory
+                WHERE source_key=?
+                LIMIT 1
+                """,
+                (source_key,),
+                one=True,
+            )
+
+            # -------------------------------------------------
+            # Existing kit:
+            # DO NOT reset quantity from Excel.
+            # -------------------------------------------------
+
+            if existing:
+
+                continue
+
+            # -------------------------------------------------
+            # New kit:
+            # Insert it into inventory.
+            # -------------------------------------------------
+
+            execute(
+                """
+                INSERT INTO inventory
+                (
+                    source_file,
+                    source_key,
+                    stock_number,
+                    name,
+                    category,
+                    description,
+                    location,
+                    total_qty,
+                    available_qty,
+                    minimum_stock,
+                    condition,
+                    maintenance_status,
+                    active,
+                    created_at,
+                    updated_at
+                )
+                VALUES
+                (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
+                """,
+                (
+                    "kits.xlsx",
+                    source_key,
+                    "",
+                    name,
+                    "Kits",
+                    "Laboratory kit",
+                    "Main Lab",
+                    quantity,
+                    quantity,
+                    1,
+                    "Good",
+                    "Clear",
+                    1,
+                    now,
+                    now,
+                ),
+            )
+
+            inserted += 1
+
+        db().commit()
+
+        app.logger.info(
+            "Kit import completed. Inserted=%s Skipped=%s",
+            inserted,
+            skipped,
+        )
+
+    except Exception:
+
+        app.logger.exception(
+            "Kit Excel import failed."
+        )
 
 def import_inventory():
     """Idempotently import only the two uploaded workbooks."""
@@ -6053,10 +6308,10 @@ def admin_dashboard():
         )
 
     historical_years = [
-        year_stats["1st"],
-        year_stats["2nd"],
-        year_stats["3rd"],
-        year_stats["4th"],
+        year_stats["F.T."],
+        year_stats["S.T."],
+        year_stats["T.T."],
+        year_stats["B.T."],
     ]
 
     # ---------------------------------------------------------
