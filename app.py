@@ -6458,7 +6458,7 @@ def admin_dashboard():
         for item in historical_components
     ]
 
-    historical_years_chart = [
+    historical_year_chart = [
     {
         "label": item["year"],
         "value": item["total_quantity"],
