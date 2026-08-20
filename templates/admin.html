@@ -1920,11 +1920,11 @@ document.addEventListener("DOMContentLoaded", function () {
         );
 
 
-    yearData =
-        mergeUsageData(
-            yearData,
-            value => cleanText(value)
-        );
+    yearData = (yearData || []).map(item => ({
+    label: cleanText(item.label),
+    value: Number(item.value || 0),
+    percentage: Number(item.percentage || 0)
+    }));
 
 
     departmentData =
@@ -2421,6 +2421,30 @@ document.addEventListener("DOMContentLoaded", function () {
 
                                 legend: {
                                     display: false
+                                },
+
+                                tooltip: {
+
+                                    callbacks: {
+
+                                        label: function(context) {
+
+                                            const item =
+                                                yearData[context.dataIndex];
+
+                                            return [
+                                                " Quantity issued: " +
+                                                item.value,
+
+                                                " Usage share: " +
+                                                item.percentage +
+                                                "%"
+                                            ];
+
+                                        }
+
+                                    }
+
                                 }
 
                             },
