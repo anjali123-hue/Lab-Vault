@@ -6291,23 +6291,6 @@ def admin_dashboard():
         },
     }
 
-    year_total_quantity = sum(
-            item["total_quantity"]
-            for item in historical_years
-        )
-
-    for item in historical_years:
-            if year_total_quantity > 0:
-                item["percentage"] = round(
-                    (
-                        item["total_quantity"]
-                        / year_total_quantity
-                    ) * 100,
-                    1,
-                )
-            else:
-                item["percentage"] = 0
-                
     for row in historical_rows:
 
         year = normalize_year(
@@ -6330,6 +6313,23 @@ def admin_dashboard():
         year_stats["T.T."],
         year_stats["B.T."],
     ]
+
+    year_total_quantity = sum(
+                item["total_quantity"]
+                for item in historical_years
+            )
+    
+    for item in historical_years:
+                if year_total_quantity > 0:
+                    item["percentage"] = round(
+                        (
+                            item["total_quantity"]
+                            / year_total_quantity
+                        ) * 100,
+                        1,
+                    )
+                else:
+                    item["percentage"] = 0
 
     # ---------------------------------------------------------
     # DEPARTMENT-WISE USAGE
@@ -6458,7 +6458,7 @@ def admin_dashboard():
         for item in historical_components
     ]
 
-    historical_year_chart = [
+    historical_years_chart = [
     {
         "label": item["year"],
         "value": item["total_quantity"],
