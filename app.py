@@ -1350,6 +1350,7 @@ def init_db_postgres():
         sync_faculty_from_excel()
         import_inventory()
         import_past_component_usage()
+        sync_kits_from_excel()
 
         # -----------------------------------------------------
         # COMMIT EVERYTHING TOGETHER
@@ -1660,74 +1661,676 @@ def sync_kits_from_excel():
             "Kit Excel import failed."
         )
 
+def normalize_inventory_name(value):
+    """
+    Normalize inventory names for duplicate detection.
+
+    Case and repeated spaces are ignored.
+    """
+    if value is None:
+        return ""
+
+    return re.sub(
+        r"\s+",
+        " ",
+        str(value).strip(),
+    ).lower()
+
+
+def merge_consumable_inventory_rows(
+    rows,
+    name,
+    stable_key,
+    category,
+    location,
+    now,
+):
+    """
+    Merge existing consumable inventory rows having the same
+    normalized name into one inventory record.
+
+    Existing live quantities are preserved by summing the
+    current quantities of the duplicate rows.
+
+    Request-item references are moved to the surviving row.
+    """
+
+    existing_rows = query(
+        """
+        SELECT *
+        FROM inventory
+        WHERE source_file='consumables'
+        AND lower(trim(name))=lower(trim(?))
+        ORDER BY id
+        """,
+        (name,),
+    )
+
+    if not existing_rows:
+        return None
+
+    keeper = existing_rows[0]
+
+    total_qty = sum(
+        int(row["total_qty"] or 0)
+        for row in existing_rows
+    )
+
+    available_qty = sum(
+        int(row["available_qty"] or 0)
+        for row in existing_rows
+    )
+
+    minimum_stock = max(
+        int(row["minimum_stock"] or 1)
+        for row in existing_rows
+    )
+
+    # ---------------------------------------------------------
+    # Move request references from duplicate rows to keeper
+    # ---------------------------------------------------------
+
+    for duplicate in existing_rows[1:]:
+
+        request_refs = query(
+            """
+            SELECT
+                id,
+                request_id,
+                quantity
+            FROM request_items
+            WHERE inventory_id=?
+            """,
+            (duplicate["id"],),
+        )
+
+        for ref in request_refs:
+
+            existing_request_item = query(
+                """
+                SELECT id, quantity
+                FROM request_items
+                WHERE request_id=?
+                AND inventory_id=?
+                LIMIT 1
+                """,
+                (
+                    ref["request_id"],
+                    keeper["id"],
+                ),
+                one=True,
+            )
+
+            if existing_request_item:
+
+                execute(
+                    """
+                    UPDATE request_items
+                    SET quantity=?
+                    WHERE id=?
+                    """,
+                    (
+                        int(existing_request_item["quantity"] or 0)
+                        + int(ref["quantity"] or 0),
+                        existing_request_item["id"],
+                    ),
+                )
+
+                execute(
+                    """
+                    DELETE FROM request_items
+                    WHERE id=?
+                    """,
+                    (ref["id"],),
+                )
+
+            else:
+
+                execute(
+                    """
+                    UPDATE request_items
+                    SET inventory_id=?
+                    WHERE id=?
+                    """,
+                    (
+                        keeper["id"],
+                        ref["id"],
+                    ),
+                )
+
+        execute(
+            """
+            DELETE FROM inventory
+            WHERE id=?
+            """,
+            (duplicate["id"],),
+        )
+
+    # ---------------------------------------------------------
+    # Keep one merged consumable record
+    # ---------------------------------------------------------
+
+    execute(
+        """
+        UPDATE inventory
+        SET
+            source_key=?,
+            name=?,
+            category=?,
+            location=?,
+            total_qty=?,
+            available_qty=?,
+            minimum_stock=?,
+            updated_at=?
+        WHERE id=?
+        """,
+        (
+            stable_key,
+            name.strip(),
+            category,
+            location or "Main Lab",
+            total_qty,
+            available_qty,
+            minimum_stock,
+            now,
+            keeper["id"],
+        ),
+    )
+
+    return keeper["id"]
+
+
 def import_inventory():
-    """Idempotently import only the two uploaded workbooks."""
+    """
+    Import inventory from the master-stock and consumables
+    workbooks.
+
+    Master-stock items remain individual stock records.
+
+    Consumables with the same name are combined into one
+    inventory record so repeated rows such as Breadboard do
+    not appear multiple times.
+    """
+
     try:
         from openpyxl import load_workbook
     except ImportError:
         return
+
     files = [
-        (ROOT / "attached_assets" / "master_stock_1786273496625.xlsx", "master_stock"),
-        (ROOT / "attached_assets" / "consumables_1786273504248.xlsx", "consumables"),
+        (
+            ROOT / "attached_assets"
+            / "master_stock_1786273496625.xlsx",
+            "master_stock",
+        ),
+        (
+            ROOT / "attached_assets"
+            / "consumables_1786273504248.xlsx",
+            "consumables",
+        ),
     ]
+
     for path, source in files:
+
         if not path.exists():
+            app.logger.warning(
+                "Inventory Excel file not found: %s",
+                path,
+            )
             continue
+
         try:
-            workbook = load_workbook(path, read_only=True, data_only=True)
+
+            workbook = load_workbook(
+                path,
+                read_only=True,
+                data_only=True,
+            )
+
             sheet = workbook.active
-            rows = list(sheet.iter_rows(values_only=True))
+
+            rows = list(
+                sheet.iter_rows(
+                    values_only=True
+                )
+            )
+
+            workbook.close()
+
+            # -------------------------------------------------
+            # Find header row
+            # -------------------------------------------------
+
             header_idx = next(
-                (i for i, row in enumerate(rows) if any(str(v or "").strip().lower() in {"name of the article", "qty"} for v in row)),
+                (
+                    i
+                    for i, row in enumerate(rows)
+                    if any(
+                        str(v or "").strip().lower()
+                        in {
+                            "name of the article",
+                            "qty",
+                        }
+                        for v in row
+                    )
+                ),
                 None,
             )
+
             if header_idx is None:
+                app.logger.warning(
+                    "Could not find inventory headers in %s",
+                    path.name,
+                )
                 continue
-            headers = [str(v or "").strip().lower() for v in rows[header_idx]]
+
+            headers = [
+                str(v or "").strip().lower()
+                for v in rows[header_idx]
+            ]
+
             def col(*names):
-                return next((headers.index(n) for n in names if n in headers), None)
-            name_i = col("name of the article")
-            qty_i = col("qty", "quantity")
+
+                return next(
+                    (
+                        headers.index(n)
+                        for n in names
+                        if n in headers
+                    ),
+                    None,
+                )
+
+            name_i = col(
+                "name of the article"
+            )
+
+            qty_i = col(
+                "qty",
+                "quantity",
+            )
+
             if name_i is None:
                 continue
-            stock_i = col("stock register no")
-            sr_i = col("sr no", "sr.no")
-            loc_i = col("allocated to", "location")
-            for row_number, row in enumerate(rows[header_idx + 1 :], 1):
-                name = str(row[name_i] or "").strip() if name_i < len(row) else ""
+
+            stock_i = col(
+                "stock register no"
+            )
+
+            sr_i = col(
+                "sr no",
+                "sr.no",
+            )
+
+            loc_i = col(
+                "allocated to",
+                "location",
+            )
+
+            # =================================================
+            # CONSUMABLES
+            # =================================================
+
+            if source == "consumables":
+
+                grouped = {}
+
+                for row in rows[
+                    header_idx + 1 :
+                ]:
+
+                    if not row:
+                        continue
+
+                    name = (
+                        str(
+                            row[name_i]
+                            or ""
+                        ).strip()
+                        if name_i < len(row)
+                        else ""
+                    )
+
+                    if not name:
+                        continue
+
+                    normalized_name = (
+                        normalize_inventory_name(
+                            name
+                        )
+                    )
+
+                    raw_qty = (
+                        row[qty_i]
+                        if qty_i is not None
+                        and qty_i < len(row)
+                        else 0
+                    )
+
+                    try:
+
+                        qty = max(
+                            0,
+                            int(
+                                float(
+                                    raw_qty or 0
+                                )
+                            ),
+                        )
+
+                    except (
+                        TypeError,
+                        ValueError,
+                    ):
+
+                        qty = 0
+
+                    location = (
+                        str(
+                            row[loc_i]
+                            or ""
+                        ).strip()
+                        if loc_i is not None
+                        and loc_i < len(row)
+                        else ""
+                    )
+
+                    if normalized_name not in grouped:
+
+                        grouped[
+                            normalized_name
+                        ] = {
+                            "name": name,
+                            "quantity": 0,
+                            "location": (
+                                location
+                                or "Main Lab"
+                            ),
+                        }
+
+                    grouped[
+                        normalized_name
+                    ]["quantity"] += qty
+
+                    if (
+                        location
+                        and grouped[
+                            normalized_name
+                        ]["location"]
+                        == "Main Lab"
+                    ):
+                        grouped[
+                            normalized_name
+                        ]["location"] = location
+
+                # ---------------------------------------------
+                # Insert/merge grouped consumables
+                # ---------------------------------------------
+
+                for normalized_name, item in grouped.items():
+
+                    name = item["name"]
+
+                    quantity = item["quantity"]
+
+                    if quantity <= 0:
+                        continue
+
+                    stable_key = (
+                        "consumables:name:"
+                        + normalized_name.replace(
+                            " ",
+                            "_",
+                        )
+                    )
+
+                    now = utcnow().isoformat()
+
+                    existing_id = (
+                        merge_consumable_inventory_rows(
+                            rows=None,
+                            name=name,
+                            stable_key=stable_key,
+                            category=category_for(
+                                name
+                            ),
+                            location=item["location"],
+                            now=now,
+                        )
+                    )
+
+                    if existing_id:
+                        continue
+
+                    execute(
+                        """
+                        INSERT INTO inventory
+                        (
+                            source_file,
+                            source_key,
+                            stock_number,
+                            name,
+                            category,
+                            description,
+                            location,
+                            total_qty,
+                            available_qty,
+                            minimum_stock,
+                            condition,
+                            maintenance_status,
+                            active,
+                            created_at,
+                            updated_at
+                        )
+                        VALUES
+                        (
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                            ?, ?, ?, ?, ?
+                        )
+                        """,
+                        (
+                            "consumables",
+                            stable_key,
+                            None,
+                            name,
+                            category_for(name),
+                            "Imported from the LabVault consumables workbook.",
+                            item["location"],
+                            quantity,
+                            quantity,
+                            max(
+                                1,
+                                min(
+                                    3,
+                                    quantity // 4 or 1,
+                                ),
+                            ),
+                            "Good",
+                            "Clear",
+                            1,
+                            now,
+                            now,
+                        ),
+                    )
+
+                continue
+
+            # =================================================
+            # MASTER STOCK
+            # =================================================
+
+            for row_number, row in enumerate(
+                rows[header_idx + 1 :],
+                1,
+            ):
+
+                name = (
+                    str(
+                        row[name_i]
+                        or ""
+                    ).strip()
+                    if name_i < len(row)
+                    else ""
+                )
+
                 if not name:
                     continue
-                stock = str(row[stock_i] or "").strip() if stock_i is not None and stock_i < len(row) else ""
-                sr = str(row[sr_i] or "").strip() if sr_i is not None and sr_i < len(row) else ""
-                key = f"{source}:{stock or sr or row_number}:{name.lower()}"
-                raw_qty = row[qty_i] if qty_i is not None and qty_i < len(row) else 0
-                try:
-                    qty = max(0, int(float(raw_qty or 0)))
-                except (TypeError, ValueError):
-                    qty = 0
-                location = str(row[loc_i] or "").strip() if loc_i is not None and loc_i < len(row) else ""
-                existing = query("SELECT id FROM inventory WHERE source_key=?", (key,), one=True)
-                now = utcnow().isoformat()
-                if existing:
-                    execute(
-                        """UPDATE inventory SET stock_number=?, name=?, category=?, location=?,
-                        total_qty=?, updated_at=? WHERE source_key=?""",
-                        (stock or sr or None, name, category_for(name), location or "Main Lab", qty, now, key),
-                    )
-                else:
-                    execute(
-                        """INSERT INTO inventory
-                        (source_file, source_key, stock_number, name, category, description, location,
-                         total_qty, available_qty, minimum_stock, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (source, key, stock or sr or None, name, category_for(name),
-                         "Imported from the LabVault inventory workbook.",
-                         location or "Main Lab", qty, qty, max(1, min(3, qty // 4 or 1)), now, now),
-                    )
-            workbook.close()
-        except Exception as exc:
-            app.logger.warning("Inventory import skipped for %s: %s", path.name, exc)
 
+                stock = (
+                    str(
+                        row[stock_i]
+                        or ""
+                    ).strip()
+                    if stock_i is not None
+                    and stock_i < len(row)
+                    else ""
+                )
+
+                sr = (
+                    str(
+                        row[sr_i]
+                        or ""
+                    ).strip()
+                    if sr_i is not None
+                    and sr_i < len(row)
+                    else ""
+                )
+
+                key = (
+                    f"{source}:"
+                    f"{stock or sr or row_number}:"
+                    f"{name.lower()}"
+                )
+
+                raw_qty = (
+                    row[qty_i]
+                    if qty_i is not None
+                    and qty_i < len(row)
+                    else 0
+                )
+
+                try:
+
+                    qty = max(
+                        0,
+                        int(
+                            float(
+                                raw_qty or 0
+                            )
+                        ),
+                    )
+
+                except (
+                    TypeError,
+                    ValueError,
+                ):
+
+                    qty = 0
+
+                location = (
+                    str(
+                        row[loc_i]
+                        or ""
+                    ).strip()
+                    if loc_i is not None
+                    and loc_i < len(row)
+                    else ""
+                )
+
+                existing = query(
+                    """
+                    SELECT id
+                    FROM inventory
+                    WHERE source_key=?
+                    LIMIT 1
+                    """,
+                    (key,),
+                    one=True,
+                )
+
+                now = utcnow().isoformat()
+
+                if existing:
+
+                    execute(
+                        """
+                        UPDATE inventory
+                        SET
+                            stock_number=?,
+                            name=?,
+                            category=?,
+                            location=?,
+                            updated_at=?
+                        WHERE source_key=?
+                        """,
+                        (
+                            stock or sr or None,
+                            name,
+                            category_for(name),
+                            location or "Main Lab",
+                            now,
+                            key,
+                        ),
+                    )
+
+                else:
+
+                    execute(
+                        """
+                        INSERT INTO inventory
+                        (
+                            source_file,
+                            source_key,
+                            stock_number,
+                            name,
+                            category,
+                            description,
+                            location,
+                            total_qty,
+                            available_qty,
+                            minimum_stock,
+                            condition,
+                            maintenance_status,
+                            active,
+                            created_at,
+                            updated_at
+                        )
+                        VALUES
+                        (
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                        )
+                        """,
+                        (
+                            source,
+                            key,
+                            stock or sr or None,
+                            name,
+                            category_for(name),
+                            "Imported from the LabVault inventory workbook.",
+                            location or "Main Lab",
+                            qty,
+                            qty,
+                            max(
+                                1,
+                                min(
+                                    3,
+                                    qty // 4 or 1,
+                                ),
+                            ),
+                            "Good",
+                            "Clear",
+                            1,
+                            now,
+                            now,
+                        ),
+                    )
+
+        except Exception as exc:
+
+            app.logger.exception(
+                "Inventory import failed for %s: %s",
+                path.name,
+                exc,
+            )
 def parse_past_date(value):
     """
     Convert Excel dates / strings into YYYY-MM-DD.
@@ -5842,12 +6445,18 @@ def admin_dashboard():
     }
 
     inventory = query(
-        """SELECT *
-           FROM inventory
-           WHERE active=1
-           ORDER BY name
-           LIMIT 60"""
-    )
+    """
+    SELECT *
+    FROM inventory
+    WHERE active=1
+    ORDER BY
+        CASE
+            WHEN lower(category)='kits' THEN 0
+            ELSE 1
+        END,
+        lower(name)
+    """
+)
 
     pending_admin_requests = query(
         """SELECT requests.*,
