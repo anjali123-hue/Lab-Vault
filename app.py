@@ -2826,34 +2826,243 @@ def token_payload(raw, stage):
 
 
 def send_mail(recipient, subject, body, action_url=None):
+    """
+    Send an email without allowing SMTP/network problems
+    to block the Flask/Gunicorn worker.
+
+    Returns:
+        True  -> email sent successfully
+        False -> email could not be sent
+    """
+
     if not recipient:
-        return False
-    html = f"""<!doctype html><html><body style="font-family:Arial,sans-serif;color:#18243a">
-    <div style="max-width:620px;margin:auto;padding:32px;background:#f6f8fc">
-    <div style="background:#17213a;color:white;border-radius:18px;padding:24px">
-    <div style="font-size:24px;font-weight:800">Lab<span style="color:#8c6cff">Vault</span></div>
-    <p style="color:#c4cee4">{body.replace(chr(10), '<br>')}</p>
-    {f'<a href="{action_url}" style="display:inline-block;background:#5277f7;color:white;padding:13px 20px;border-radius:10px;text-decoration:none;font-weight:700">Review in LabVault</a>' if action_url else ''}
-    </div><p style="font-size:12px;color:#7d889b">Sent by LabVault · {MAIL_SENDER}</p></div></body></html>"""
-    try:
-        if not MAIL_PASSWORD:
-            app.logger.warning("MAIL_PASSWORD is not configured; email preview not sent to %s", recipient)
-            return False
-        message = EmailMessage()
-        message["Subject"] = subject
-        message["From"] = f"LabVault <{MAIL_SENDER}>"
-        message["To"] = recipient
-        message.set_content(body)
-        message.add_alternative(html, subtype="html")
-        with smtplib.SMTP(os.getenv("MAIL_SERVER", "smtp.gmail.com"), int(os.getenv("MAIL_PORT", "587"))) as smtp:
-            smtp.starttls()
-            smtp.login(MAIL_SENDER, MAIL_PASSWORD)
-            smtp.send_message(message)
-        return True
-    except Exception as exc:
-        app.logger.warning("Email delivery failed: %s", exc)
+        app.logger.warning(
+            "Email not sent because recipient is empty."
+        )
         return False
 
+    recipient = str(recipient).strip()
+
+    html = f"""
+    <!doctype html>
+    <html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>{subject}</title>
+    </head>
+
+    <body
+        style="
+            margin:0;
+            padding:0;
+            background:#f6f8fc;
+            font-family:Arial,Helvetica,sans-serif;
+            color:#18243a;
+        "
+    >
+
+        <div
+            style="
+                max-width:620px;
+                margin:0 auto;
+                padding:32px 20px;
+            "
+        >
+
+            <div
+                style="
+                    background:#17213a;
+                    color:white;
+                    border-radius:18px;
+                    padding:28px;
+                "
+            >
+
+                <div
+                    style="
+                        font-size:26px;
+                        font-weight:800;
+                        margin-bottom:18px;
+                    "
+                >
+                    Lab<span style="color:#8c6cff;">Vault</span>
+                </div>
+
+                <h2
+                    style="
+                        margin:0 0 16px;
+                        color:white;
+                        font-size:22px;
+                    "
+                >
+                    {subject}
+                </h2>
+
+                <p
+                    style="
+                        margin:0;
+                        color:#c4cee4;
+                        line-height:1.7;
+                        font-size:15px;
+                    "
+                >
+                    {body.replace(chr(10), '<br>')}
+                </p>
+
+                {
+                    f'''
+                    <div style="margin-top:24px;">
+                        <a
+                            href="{action_url}"
+                            style="
+                                display:inline-block;
+                                background:#5277f7;
+                                color:white;
+                                padding:13px 20px;
+                                border-radius:10px;
+                                text-decoration:none;
+                                font-weight:700;
+                            "
+                        >
+                            Open LabVault
+                        </a>
+                    </div>
+                    '''
+                    if action_url
+                    else ""
+                }
+
+            </div>
+
+            <p
+                style="
+                    margin:16px 0 0;
+                    font-size:12px;
+                    color:#7d889b;
+                    text-align:center;
+                "
+            >
+                Sent by LabVault · {MAIL_SENDER}
+            </p>
+
+        </div>
+
+    </body>
+    </html>
+    """
+
+    try:
+
+        # --------------------------------------------------
+        # CHECK MAIL CONFIGURATION
+        # --------------------------------------------------
+
+        if not MAIL_SENDER:
+            app.logger.error(
+                "MAIL_SENDER is not configured."
+            )
+            return False
+
+        if not MAIL_PASSWORD:
+            app.logger.error(
+                "MAIL_PASSWORD is not configured."
+            )
+            return False
+
+        server = (
+            os.getenv(
+                "MAIL_SERVER",
+                "smtp.gmail.com",
+            ).strip()
+        )
+
+        try:
+            port = int(
+                os.getenv(
+                    "MAIL_PORT",
+                    "587",
+                )
+            )
+        except (TypeError, ValueError):
+            port = 587
+
+        # --------------------------------------------------
+        # BUILD EMAIL
+        # --------------------------------------------------
+
+        message = EmailMessage()
+
+        message["Subject"] = str(subject)
+        message["From"] = (
+            f"LabVault <{MAIL_SENDER}>"
+        )
+        message["To"] = recipient
+
+        message.set_content(body)
+
+        message.add_alternative(
+            html,
+            subtype="html",
+        )
+
+        # --------------------------------------------------
+        # SMTP CONNECTION
+        #
+        # timeout=10 is important on Render.
+        # It prevents the request from hanging forever.
+        # --------------------------------------------------
+
+        with smtplib.SMTP(
+            server,
+            port,
+            timeout=10,
+        ) as smtp:
+
+            smtp.ehlo()
+
+            smtp.starttls()
+
+            smtp.ehlo()
+
+            smtp.login(
+                MAIL_SENDER,
+                MAIL_PASSWORD,
+            )
+
+            smtp.send_message(message)
+
+        app.logger.info(
+            "Email sent successfully to %s",
+            recipient,
+        )
+
+        return True
+
+    except (
+        smtplib.SMTPException,
+        OSError,
+        TimeoutError,
+        ValueError,
+    ) as exc:
+
+        app.logger.exception(
+            "SMTP email delivery failed for %s: %s",
+            recipient,
+            exc,
+        )
+
+        return False
+
+    except Exception as exc:
+
+        app.logger.exception(
+            "Unexpected email error for %s: %s",
+            recipient,
+            exc,
+        )
+
+        return False
 
 def request_items(request_id):
     return query(
