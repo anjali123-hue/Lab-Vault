@@ -2826,7 +2826,7 @@ def token_payload(raw, stage):
     return (payload, token), None
 
 
-ddef send_mail(recipient, subject, body, action_url=None):
+def send_mail(recipient, subject, body, action_url=None):
     """
     Send LabVault email using the Resend HTTPS API.
 
@@ -3125,7 +3125,7 @@ ddef send_mail(recipient, subject, body, action_url=None):
         )
 
         return False
-        
+
 def request_items(request_id):
     return query(
         """SELECT ri.quantity, i.name, i.category, i.location
