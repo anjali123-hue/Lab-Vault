@@ -21,6 +21,7 @@ import psycopg
 from psycopg.rows import dict_row
 import smtplib
 import shutil
+import resend
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -2825,15 +2826,22 @@ def token_payload(raw, stage):
     return (payload, token), None
 
 
-def send_mail(recipient, subject, body, action_url=None):
+ddef send_mail(recipient, subject, body, action_url=None):
     """
-    Send an email without allowing SMTP/network problems
-    to block the Flask/Gunicorn worker.
+    Send LabVault email using the Resend HTTPS API.
+
+    This replaces the SMTP implementation because the Render
+    free web service cannot make outbound SMTP connections
+    on the standard SMTP ports.
 
     Returns:
-        True  -> email sent successfully
+        True  -> email accepted by Resend
         False -> email could not be sent
     """
+
+    # --------------------------------------------------
+    # BASIC VALIDATION
+    # --------------------------------------------------
 
     if not recipient:
         app.logger.warning(
@@ -2843,13 +2851,127 @@ def send_mail(recipient, subject, body, action_url=None):
 
     recipient = str(recipient).strip()
 
+    if not recipient:
+        app.logger.warning(
+            "Email not sent because recipient is empty after trimming."
+        )
+        return False
+
+    # --------------------------------------------------
+    # READ RESEND API KEY
+    # --------------------------------------------------
+
+    resend_api_key = os.getenv(
+        "RESEND_API_KEY",
+        ""
+    ).strip()
+
+    if not resend_api_key:
+        app.logger.error(
+            "RESEND_API_KEY is not configured."
+        )
+        return False
+
+    # --------------------------------------------------
+    # CONFIGURE RESEND
+    # --------------------------------------------------
+
+    try:
+        resend.api_key = resend_api_key
+
+    except Exception as exc:
+        app.logger.exception(
+            "Could not configure Resend: %s",
+            exc,
+        )
+        return False
+
+    # --------------------------------------------------
+    # PREPARE PLAIN-TEXT BODY
+    # --------------------------------------------------
+
+    plain_body = str(
+        body or ""
+    ).strip()
+
+    # --------------------------------------------------
+    # ESCAPE BODY FOR HTML
+    # --------------------------------------------------
+
+    body_html = (
+        plain_body
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&#39;")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .replace("\n", "<br>")
+    )
+
+    # --------------------------------------------------
+    # OPTIONAL ACTION BUTTON
+    # --------------------------------------------------
+
+    button_html = ""
+
+    if action_url:
+
+        safe_action_url = (
+            str(action_url)
+            .replace("&", "&amp;")
+            .replace('"', "&quot;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+
+        button_html = f"""
+        <div style="margin-top:24px;">
+            <a
+                href="{safe_action_url}"
+                style="
+                    display:inline-block;
+                    background:#5277f7;
+                    color:#ffffff;
+                    padding:13px 20px;
+                    border-radius:10px;
+                    text-decoration:none;
+                    font-weight:700;
+                    font-size:14px;
+                "
+            >
+                Open LabVault
+            </a>
+        </div>
+        """
+
+    # --------------------------------------------------
+    # HTML EMAIL
+    # --------------------------------------------------
+
+    safe_subject = (
+        str(subject or "LabVault")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&#39;")
+    )
+
     html = f"""
     <!doctype html>
     <html lang="en">
+
     <head>
         <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>{subject}</title>
+
+        <meta
+            name="viewport"
+            content="width=device-width,initial-scale=1"
+        >
+
+        <title>{safe_subject}</title>
     </head>
 
     <body
@@ -2873,31 +2995,38 @@ def send_mail(recipient, subject, body, action_url=None):
             <div
                 style="
                     background:#17213a;
-                    color:white;
+                    color:#ffffff;
                     border-radius:18px;
                     padding:28px;
                 "
             >
 
+                <!-- BRAND -->
+
                 <div
                     style="
                         font-size:26px;
                         font-weight:800;
-                        margin-bottom:18px;
+                        margin-bottom:20px;
                     "
                 >
                     Lab<span style="color:#8c6cff;">Vault</span>
                 </div>
 
+                <!-- SUBJECT -->
+
                 <h2
                     style="
                         margin:0 0 16px;
-                        color:white;
+                        color:#ffffff;
                         font-size:22px;
+                        line-height:1.35;
                     "
                 >
-                    {subject}
+                    {safe_subject}
                 </h2>
+
+                <!-- MESSAGE -->
 
                 <p
                     style="
@@ -2907,163 +3036,96 @@ def send_mail(recipient, subject, body, action_url=None):
                         font-size:15px;
                     "
                 >
-                    {body.replace(chr(10), '<br>')}
+                    {body_html}
                 </p>
 
-                {
-                    f'''
-                    <div style="margin-top:24px;">
-                        <a
-                            href="{action_url}"
-                            style="
-                                display:inline-block;
-                                background:#5277f7;
-                                color:white;
-                                padding:13px 20px;
-                                border-radius:10px;
-                                text-decoration:none;
-                                font-weight:700;
-                            "
-                        >
-                            Open LabVault
-                        </a>
-                    </div>
-                    '''
-                    if action_url
-                    else ""
-                }
+                {button_html}
 
             </div>
+
+            <!-- FOOTER -->
 
             <p
                 style="
                     margin:16px 0 0;
                     font-size:12px;
+                    line-height:1.5;
                     color:#7d889b;
                     text-align:center;
                 "
             >
-                Sent by LabVault · {MAIL_SENDER}
+                This email was sent by LabVault.
             </p>
 
         </div>
 
     </body>
+
     </html>
     """
 
+    # --------------------------------------------------
+    # SENDER
+    # --------------------------------------------------
+    #
+    # For now this uses Resend's supported test sender.
+    #
+    # When you verify your own domain in Resend, set:
+    #
+    # MAIL_FROM=LabVault <noreply@yourdomain.com>
+    #
+    # in Render Environment Variables.
+    # --------------------------------------------------
+
+    sender = os.getenv(
+        "MAIL_FROM",
+        "onboarding@resend.dev",
+    ).strip()
+
+    if not sender:
+        sender = "onboarding@resend.dev"
+
+    # --------------------------------------------------
+    # SEND THROUGH RESEND HTTPS API
+    # --------------------------------------------------
+
     try:
 
-        # --------------------------------------------------
-        # CHECK MAIL CONFIGURATION
-        # --------------------------------------------------
+        params = {
+            "from": sender,
+            "to": [recipient],
+            "subject": str(subject or "LabVault"),
+            "text": plain_body,
+            "html": html,
+        }
 
-        if not MAIL_SENDER:
-            app.logger.error(
-                "MAIL_SENDER is not configured."
-            )
-            return False
-
-        if not MAIL_PASSWORD:
-            app.logger.error(
-                "MAIL_PASSWORD is not configured."
-            )
-            return False
-
-        server = (
-            os.getenv(
-                "MAIL_SERVER",
-                "smtp.gmail.com",
-            ).strip()
+        response = resend.Emails.send(
+            params
         )
-
-        try:
-            port = int(
-                os.getenv(
-                    "MAIL_PORT",
-                    "587",
-                )
-            )
-        except (TypeError, ValueError):
-            port = 587
-
-        # --------------------------------------------------
-        # BUILD EMAIL
-        # --------------------------------------------------
-
-        message = EmailMessage()
-
-        message["Subject"] = str(subject)
-        message["From"] = (
-            f"LabVault <{MAIL_SENDER}>"
-        )
-        message["To"] = recipient
-
-        message.set_content(body)
-
-        message.add_alternative(
-            html,
-            subtype="html",
-        )
-
-        # --------------------------------------------------
-        # SMTP CONNECTION
-        #
-        # timeout=10 is important on Render.
-        # It prevents the request from hanging forever.
-        # --------------------------------------------------
-
-        with smtplib.SMTP(
-            server,
-            port,
-            timeout=10,
-        ) as smtp:
-
-            smtp.ehlo()
-
-            smtp.starttls()
-
-            smtp.ehlo()
-
-            smtp.login(
-                MAIL_SENDER,
-                MAIL_PASSWORD,
-            )
-
-            smtp.send_message(message)
 
         app.logger.info(
-            "Email sent successfully to %s",
+            "LabVault email accepted by Resend. "
+            "Recipient=%s Response=%s",
             recipient,
+            response,
         )
 
         return True
 
-    except (
-        smtplib.SMTPException,
-        OSError,
-        TimeoutError,
-        ValueError,
-    ) as exc:
-
-        app.logger.exception(
-            "SMTP email delivery failed for %s: %s",
-            recipient,
-            exc,
-        )
-
-        return False
+    # --------------------------------------------------
+    # RESEND / NETWORK ERROR
+    # --------------------------------------------------
 
     except Exception as exc:
 
         app.logger.exception(
-            "Unexpected email error for %s: %s",
+            "Resend email delivery failed for %s: %s",
             recipient,
             exc,
         )
 
         return False
-
+        
 def request_items(request_id):
     return query(
         """SELECT ri.quantity, i.name, i.category, i.location
